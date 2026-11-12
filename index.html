@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="A focused Nifty 100 swing-trade scanner for price-action setups, risk levels, and watchlist research.">
+  <title>Pivot — Nifty 100 Price Action Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Pivot home"><span class="brand-mark">P<span>·</span></span><span>pivot<span class="brand-sub">MARKET INTELLIGENCE</span></span></a>
+      <div class="side-label">WORKSPACE</div>
+      <button class="nav-item active" data-view="scanner"><span class="nav-icon">◫</span> Market scanner <span class="nav-count" id="nav-count">—</span></button>
+      <button class="nav-item" data-view="watchlist"><span class="nav-icon">☆</span> Watchlist <span class="nav-count" id="watch-count">0</span></button>
+      <div class="side-label strategy-label">STRATEGY</div>
+      <div class="strategy-card"><span class="strategy-dot"></span><div><strong>Price action</strong><small>Daily · Swing (3–15 days)</small></div><span class="chevron">⌄</span></div>
+      <div class="side-label">SETUPS IN FOCUS</div>
+      <div class="legend-row"><i class="legend-dot breakout-dot"></i><span>Resistance breakout</span></div>
+      <div class="legend-row"><i class="legend-dot pullback-dot"></i><span>EMA pullback</span></div>
+      <div class="legend-row"><i class="legend-dot inside-dot"></i><span>Inside-bar break</span></div>
+      <div class="sidebar-bottom"><div class="disclaimer-mini">Research tool only<br><span>Not investment advice</span></div><div class="profile"><div class="avatar">N</div><div><strong>Nifty 100</strong><small>India · NSE</small></div><span class="online-dot"></span></div></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar"><div class="breadcrumb">Markets <span>/</span> <strong>Opportunity scanner</strong></div><div class="top-actions"><div class="market-status"><i></i><span id="data-status">DEMO DATA</span></div><button class="icon-button" id="help-button" aria-label="About this scanner">?</button><div class="date-label" id="today-label">—</div></div></header>
+      <section class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span> PRICE ACTION · NSE</div><h1>Find your next <span>setup.</span></h1><p class="page-subtitle">A clear view of swing opportunities across the Nifty 100.</p></div><button class="primary-button" id="upload-button"><span>↑</span> Import OHLC data</button><input id="csv-file" type="file" accept=".csv,text/csv" hidden></section>
+
+      <section class="market-strip" aria-label="Market summary"><div class="market-main"><div class="market-icon">N</div><div><div class="market-name">NIFTY 100 <span class="live-pill"><i></i> INDEX</span></div><div class="market-desc" id="market-desc">Broad-market universe · Daily timeframe</div></div></div><div class="strip-divider"></div><div class="metric"><span class="metric-label">STOCKS SCANNED</span><strong id="metric-scanned">100</strong></div><div class="metric"><span class="metric-label">ACTIVE SETUPS</span><strong id="metric-setups">—</strong></div><div class="metric"><span class="metric-label">AVG. RISK / REWARD</span><strong id="metric-rr">—</strong></div><div class="strip-note"><span class="pulse"></span> Scan refreshed <b id="refresh-time">just now</b></div></section>
+
+      <section class="toolbar"><div class="tabs" role="tablist" aria-label="Setup filter"><button class="tab active" data-filter="all">All setups <span id="tab-all">0</span></button><button class="tab" data-filter="breakout">Breakouts <span id="tab-breakout">0</span></button><button class="tab" data-filter="pullback">Pullbacks <span id="tab-pullback">0</span></button><button class="tab" data-filter="inside">Inside bar <span id="tab-inside">0</span></button></div><div class="toolbar-controls"><label class="search-box"><span>⌕</span><input id="search-input" type="search" placeholder="Search stocks..." autocomplete="off"></label><select id="sort-select" aria-label="Sort results"><option value="score">Top ranked</option><option value="rr">Best risk / reward</option><option value="symbol">Symbol A–Z</option></select></div></section>
+
+      <section class="results-heading"><div><h2>Today's opportunities <span class="results-count" id="results-count">0 stocks</span></h2><p>Price-action signals with entry, invalidation, and target levels.</p></div><button class="text-button" id="reset-demo">↺ Reset demo data</button></section>
+      <section id="results-grid" class="results-grid" aria-live="polite"></section>
+      <section id="empty-state" class="empty-state" hidden><div class="empty-icon">⌕</div><h3>No matching setups</h3><p>Try another filter or search term, or import a different OHLC CSV.</p><button class="text-button" id="clear-filters">Clear filters</button></section>
+
+      <footer class="page-footer"><span><b>Pivot</b> · Built for thoughtful trading.</span><span>Educational research only. Signals are rule-based and may be incorrect. <a href="#methodology" id="methodology-link">How it works ↗</a></span></footer>
+    </main>
+  </div>
+
+  <dialog id="detail-dialog" class="detail-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><div id="detail-content"></div></dialog>
+  <dialog id="info-dialog" class="detail-dialog info-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button></form><div class="eyebrow"><span class="eyebrow-line"></span> SCANNER NOTES</div><h2>How Pivot finds setups</h2><p>Pivot checks daily OHLCV candles for three simple price-action patterns: a close above the prior 20-session high with volume confirmation, a bullish pullback toward a rising 20-day EMA, or a breakout above an inside bar. It estimates a stop from recent swing lows / ATR and shows a 2R reference target.</p><p>Signals are calculated only from the candles you provide. The built-in examples are <strong>synthetic demo data</strong>, not live prices or recommendations. CSV data stays in your browser and is not uploaded.</p><div class="info-callout">Trading involves risk. Verify prices, liquidity, corporate actions, and your own risk limits before making any decision.</div></dialog>
+  <script src="app.js"></script>
+</body>
+</html>
