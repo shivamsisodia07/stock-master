@@ -1,26 +1,41 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+import axios from "axios";
+import { API_BASE_URL } from "../utlis/baseUrl.js";
+import { API_ROUTES } from "../utlis/api_routes.js";
+
+const apiClient = axios.create({ baseURL: API_BASE_URL });
 
 async function request(path, signal, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, { ...options, signal });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Market data request failed (${response.status}).`);
+  try {
+    const response = await apiClient.request({ url: path, signal, ...options });
+    return response.data;
+  } catch (error) {
+    if (axios.isCancel(error)) throw error;
+    if (axios.isAxiosError(error)) {
+      const detail = error.response?.data?.detail;
+      if (typeof detail === "string" && detail) throw new Error(detail);
+      if (error.response) {
+        throw new Error(`Market data request failed (${error.response.status}).`);
+      }
+    }
+    throw error;
   }
-  return response.json();
 }
 
 export function getMarketData(signal) {
-  return request("/api/market-data", signal);
+  return request(API_ROUTES.MARKET_DATA, signal);
 }
 
 export function getStockChart(symbol, timeframe, signal) {
-  return request(`/api/stocks/${encodeURIComponent(symbol)}/chart?timeframe=${timeframe}`, signal);
+  return request(API_ROUTES.STOCK_CHART(symbol, timeframe), signal);
+}
+
+export function getStockNews(symbol, signal) {
+  return request(API_ROUTES.STOCK_NEWS(symbol), signal);
 }
 
 export function importCsv(content) {
-  return request("/api/import-csv", undefined, {
+  return request(API_ROUTES.IMPORT_CSV, undefined, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    data: { content },
   });
 }

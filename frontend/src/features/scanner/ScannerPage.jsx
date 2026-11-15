@@ -4,8 +4,9 @@ import useAlerts from "../alerts/useAlerts.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
 import { importCsv } from "../../lib/api.js";
 import { relativeTime } from "../../lib/format.js";
-import WorkspaceLayout from "../../components/WorkspaceLayout.jsx";
+import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import ZoneCard from "./ZoneCard.jsx";
+import ZoneTable from "./ZoneTable.jsx";
 import useMarketData from "./useMarketData.js";
 import { TIMEFRAMES, tradePlanFor, zonesMeetingFilters } from "./zones.js";
 
@@ -25,7 +26,7 @@ function Methodology({ onClose }) {
         <h2 id="methodology-title">How is this scan built?</h2>
         <p>Each candle is an exciting candle when its body is more than half of its range; otherwise it is a base. The detector marks DBR, RBR, RBD, DBD and direct no-base reversals using base bodies for the proximal line and the furthest base wick for the distal line.</p>
         <p>It ignores a still-forming latest candle, then removes broken zones, zones with two or more retests, zones with no close beyond the leg-in extreme within the first three leg-out candles, and every zone scoring below 5/7. A demand retest occurs when a later candle's body extends below the proximal line; a supply retest is the mirror. Wick-only contact stays fresh unless a later exciting candle departs in the original direction after price has reached the proximal line. Each distinct body re-entry counts once, and the original leg-out never counts as a test. Any close beyond the distal line breaks the zone. The score is freshness (3 when fresh, 1.5 when tested once), strength (2 for two exciting legs; one exciting leg plus a directional gap also scores 2; one exciting leg scores 1), and base length (2 for 1–3 candles, 1 for 4–5, 0 otherwise). A demand gap is when the leg-out low is above the previous candle high; a supply gap is when its high is below the previous candle low. Current pattern detection still requires both incoming and outgoing legs to be exciting.</p>
-        <p>The scanner lists a stock when its last daily close is inside a daily zone or within 3% of its proximal line. Entry distance is measured from the proximal line; the stop is the distal line. The target is the nearest opposing zone's proximal edge when available, otherwise a mechanical 2R target. The zone freshness filter shows either untested zones or zones tested once; quote freshness remains visible on each card. Daily (2 years), weekly (10 years), and monthly (maximum available) candles come from Yahoo Finance; quarterly candles are aggregated from monthly history. CSV imports aggregate weekly, monthly, and quarterly candles from the supplied daily data.</p>
+        <p>The scanner lists a stock when a zone on the selected timeframe meets the active entry-distance, reward/risk, score, and freshness filters. Entry distance is measured from the proximal line; the stop is the distal line. The target is the nearest opposing zone's proximal edge when available, otherwise a mechanical 2R target. The zone freshness filter shows either untested zones or zones tested once; quote freshness remains visible in tile view. Daily (2 years), weekly (10 years), and monthly (maximum available) candles come from Yahoo Finance; quarterly candles are aggregated from monthly history. CSV imports aggregate weekly, monthly, and quarterly candles from the supplied daily data.</p>
         <div className="info-callout">Yahoo Finance data can be delayed. Automated zones can miss context; this is educational research, not investment advice.</div>
       </section>
     </div>
@@ -39,15 +40,16 @@ export default function ScannerPage({ navigate }) {
   const [csvLoading, setCsvLoading] = useState(false);
   const watchlist = useWatchlist();
   const [filter, setFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState("daily");
+  const [timeframe, setTimeframe] = useState("monthly");
+  const [resultsView, setResultsView] = useState("tiles");
   const [minScore, setMinScore] = useState(5);
-  const [maxDistancePct, setMaxDistancePct] = useState(3);
+  const [maxDistancePct, setMaxDistancePct] = useState(5);
   const [minRiskReward, setMinRiskReward] = useState(2);
   const [zoneFreshness, setZoneFreshness] = useState("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("distance");
   const [chartStock, setChartStock] = useState(null);
-  const [chartTimeframe, setChartTimeframe] = useState("daily");
+  const [chartTimeframe, setChartTimeframe] = useState("monthly");
   const [chartMinScore, setChartMinScore] = useState(5);
   const [showMethodology, setShowMethodology] = useState(false);
   const stocks = importedData?.stocks ?? market.stocks;
@@ -71,7 +73,7 @@ export default function ScannerPage({ navigate }) {
     setCsvError("");
     try {
       setImportedData(await importCsv(await file.text()));
-      navigate("/");
+      navigate("/scanner");
     } catch (requestError) {
       setCsvError(requestError.message || "Unable to import this OHLC CSV.");
     } finally {
@@ -112,18 +114,18 @@ export default function ScannerPage({ navigate }) {
   const freshnessSummary = stocks.length ? `${stocks.filter((stock) => ["fresh", "session close"].includes(stock.freshness.status)).length}/${stocks.length} fresh` : "Waiting for feed";
 
   return (
-    <WorkspaceLayout view="scanner" navigate={navigate} scannerCount={nearbyDemand + nearbySupply} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length}>
-        <header className="topbar"><div className="breadcrumb">Markets <span>/</span> <strong>Demand &amp; supply zones</strong></div><div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{error ? "DATA UNAVAILABLE" : importedData ? "CSV · STATIC" : "INTRADAY · YAHOO"}</span></div><button className="icon-button" aria-label="How the scan works" onClick={() => setShowMethodology(true)}>?</button><div className="date-label">{updatedAt ? new Date(updatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</div></div></header>
-        <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" />PRICE STRUCTURE · NSE</div><h1>Find zones that <span>matter.</span></h1><p className="page-subtitle">A consistent demand and supply scan across the Nifty 100 universe.</p></div><div className="heading-actions"><button className="text-button" onClick={() => setShowMethodology(true)}>How is this scan built?</button><input id="csv-import" type="file" accept=".csv,text/csv" hidden onChange={handleCsv} /><button className="text-button" disabled={csvLoading} onClick={() => document.getElementById("csv-import").click()}>{csvLoading ? "Importing…" : "↑ Import OHLC CSV"}</button><button className="primary-button" onClick={() => { if (importedData) { setImportedData(null); market.refresh(); } else market.refresh(); }}>{importedData ? "↻ Return to live data" : "↻ Refresh data"}</button></div></section>
+    <WorkspaceLayout view="scanner" navigate={navigate} scannerCount={nearbyDemand + nearbySupply} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={stocks}>
+        <header className="topbar"><Breadcrumb navigate={navigate} current="Zone scanner" /><div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{error ? "DATA UNAVAILABLE" : importedData ? "CSV · STATIC" : "INTRADAY · YAHOO"}</span></div><button className="icon-button" aria-label="How the scan works" onClick={() => setShowMethodology(true)}>?</button><div className="date-label">{updatedAt ? new Date(updatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</div></div></header>
+        <section className="page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between"><div><div className="eyebrow"><span className="eyebrow-line" />PRICE STRUCTURE · NSE</div><h1>Find zones that <span>matter.</span></h1><p className="page-subtitle">A consistent demand and supply scan across the Nifty 100 universe.</p></div><div className="heading-actions"><button className="text-button" onClick={() => setShowMethodology(true)}>How is this scan built?</button><input id="csv-import" type="file" accept=".csv,text/csv" hidden onChange={handleCsv} /><button className="text-button" disabled={csvLoading} onClick={() => document.getElementById("csv-import").click()}>{csvLoading ? "Importing…" : "↑ Import OHLC CSV"}</button><button className="primary-button" onClick={() => { if (importedData) { setImportedData(null); market.refresh(); } else market.refresh(); }}>{importedData ? "↻ Return to live data" : "↻ Refresh data"}</button></div></section>
 
-        <section className="market-strip" aria-label="Market summary"><div className="market-main"><div className="market-icon">N</div><div><div className="market-name">{importedData ? "CSV DATA" : "NIFTY 100"} <span className="live-pill"><i />{stocks.length ? importedData ? "IMPORTED" : "SCANNED" : "CONNECTING"}</span></div><div className="market-desc">{importedData ? "Daily OHLC imported · Weekly/monthly aggregated" : `Intraday quote may be delayed · Universe: ${universe?.source || "NSE Indices"}`}</div></div></div><div className="strip-divider" /><div className="metric"><span className="metric-label">STOCKS LOADED</span><strong>{stocks.length || (loading ? "…" : "0")}</strong></div><div className="metric"><span className="metric-label">DEMAND ZONES</span><strong>{nearbyDemand}</strong></div><div className="metric"><span className="metric-label">SUPPLY ZONES</span><strong>{nearbySupply}</strong></div><div className="strip-note"><span className="pulse" />{freshnessSummary} <b>{updatedAt ? relativeTime(updatedAt) : ""}</b></div></section>
+        <section className="market-strip flex items-center max-[820px]:flex-wrap" aria-label="Market summary"><div className="market-main"><div className="market-icon">N</div><div><div className="market-name">{importedData ? "CSV DATA" : "NIFTY 100"} <span className="live-pill"><i />{stocks.length ? importedData ? "IMPORTED" : "SCANNED" : "CONNECTING"}</span></div><div className="market-desc">{importedData ? "Daily OHLC imported · Weekly/monthly aggregated" : `Intraday quote may be delayed · Universe: ${universe?.source || "NSE Indices"}`}</div></div></div><div className="strip-divider" /><div className="metric"><span className="metric-label">STOCKS LOADED</span><strong>{stocks.length || (loading ? "…" : "0")}</strong></div><div className="metric"><span className="metric-label">DEMAND ZONES</span><strong>{nearbyDemand}</strong></div><div className="metric"><span className="metric-label">SUPPLY ZONES</span><strong>{nearbySupply}</strong></div><div className="strip-note"><span className="pulse" />{freshnessSummary} <b>{updatedAt ? relativeTime(updatedAt) : ""}</b></div></section>
 
         {market.error && !importedData && !csvError && <div className="error-banner" role="alert">{market.error} <button className="text-button" onClick={market.refresh}>Retry</button></div>}
         {csvError && <div className="error-banner" role="alert">{csvError} <button className="text-button" onClick={() => setCsvError("")}>Dismiss</button></div>}
         {!error && universe?.source === "bundled fallback" && <div className="warning-banner" role="status">NSE Indices could not be reached. Using the bundled Nifty 100 fallback list.</div>}
         {!error && failedBatches.length > 0 && <div className="warning-banner" role="status">Some timeframe or quote batches failed ({failedBatches.length}); available data is shown with partial coverage.</div>}
         {!error && loading && <div className="loading-banner">Loading daily, weekly and monthly market structure…</div>}
-            <section className="toolbar">
+            <section className="toolbar flex flex-col items-start min-[821px]:flex-row min-[821px]:items-center min-[821px]:justify-between">
               <div className="toolbar-filters">
                 <div className="tabs timeframe-tabs" role="tablist" aria-label="Zone timeframe">{TIMEFRAMES.map(([value, label]) => <button key={value} role="tab" className={`tab ${timeframe === value ? "active" : ""}`} aria-selected={timeframe === value} onClick={() => setTimeframe(value)}>{label}</button>)}</div>
                 <div className="tabs" role="tablist" aria-label="Zone type filter">{FILTERS.map(([value, label]) => <button key={value} role="tab" className={`tab ${filter === value ? "active" : ""}`} aria-selected={filter === value} onClick={() => setFilter(value)}>{label}<span>{value === "demand" ? nearbyDemand : value === "supply" ? nearbySupply : nearbyDemand + nearbySupply}</span></button>)}</div>
@@ -137,8 +139,21 @@ export default function ScannerPage({ navigate }) {
                 <select aria-label="Sort results" value={sort} onChange={(event) => setSort(event.target.value)}><option value="distance">Nearest entry</option><option value="score">Highest score</option><option value="symbol">Symbol A–Z</option></select>
               </div>
             </section>
-            <section className="results-heading"><div><h2>{filter === "demand" ? `${timeframe} demand zones` : filter === "supply" ? `${timeframe} supply zones` : `${timeframe} zone opportunities`} <span className="results-count">{visibleStocks.length} stocks</span></h2><p>Distance from entry · score {minScore}/7+ · {Number.isFinite(maxDistancePct) ? `max ${maxDistancePct}% entry distance` : "any entry distance"} · {minRiskReward ? `minimum reward/risk ${minRiskReward}R` : "any reward/risk"} · zone freshness {zoneFreshness === "all" ? "any" : zoneFreshness}.</p></div><span className="results-count">{importedData ? "CSV imported" : "Quote refresh"} · {relativeTime(updatedAt)}</span></section>
-            <section className="results-grid" aria-live="polite">{visibleStocks.map((stock) => <ZoneCard key={stock.symbol} stock={stock} timeframe={timeframe} minScore={minScore} maxDistancePct={maxDistancePct} minRiskReward={minRiskReward} zoneType={filter} zoneFreshness={zoneFreshness} watched={watchlist.includes(stock.symbol)} onWatchlist={watchlist.toggle} onChart={(selectedStock, selectedTimeframe, selectedMinScore) => { setChartStock(selectedStock); setChartTimeframe(selectedTimeframe); setChartMinScore(selectedMinScore); }} onAlert={alerts.toggleRule} hasAlert={alerts.hasRule} />)}</section>
+            <section className="results-heading">
+              <div><h2>{filter === "demand" ? `${timeframe} demand zones` : filter === "supply" ? `${timeframe} supply zones` : `${timeframe} zone opportunities`} <span className="results-count">{visibleStocks.length} stocks</span></h2><p>Distance from entry · score {minScore}/7+ · {Number.isFinite(maxDistancePct) ? `max ${maxDistancePct}% entry distance` : "any entry distance"} · {minRiskReward ? `minimum reward/risk ${minRiskReward}R` : "any reward/risk"} · zone freshness {zoneFreshness === "all" ? "any" : zoneFreshness}.</p></div>
+              <div className="results-heading-actions">
+                <span className="results-count">{importedData ? "CSV imported" : "Quote refresh"} · {relativeTime(updatedAt)}</span>
+                <div className="view-toggle" role="group" aria-label="Scanner results view">
+                  <button type="button" className={resultsView === "table" ? "active" : ""} aria-pressed={resultsView === "table"} onClick={() => setResultsView("table")}>Table</button>
+                  <button type="button" className={resultsView === "tiles" ? "active" : ""} aria-pressed={resultsView === "tiles"} onClick={() => setResultsView("tiles")}>Tiles</button>
+                </div>
+              </div>
+            </section>
+            {resultsView === "table" ? (
+              <ZoneTable stocks={visibleStocks} timeframe={timeframe} filters={{ minScore, maxDistancePct, minRiskReward, zoneType: filter, freshness: zoneFreshness }} navigate={navigate} watched={watchlist.includes} onWatchlist={watchlist.toggle} onChart={(stock) => { setChartStock(stock); setChartTimeframe(timeframe); setChartMinScore(minScore); }} onAlert={alerts.toggleRule} hasAlert={alerts.hasRule} />
+            ) : (
+              <section className="results-grid grid grid-cols-1 gap-3 min-[561px]:max-[1200px]:grid-cols-2 min-[1201px]:grid-cols-3" aria-live="polite">{visibleStocks.map((stock) => <ZoneCard key={stock.symbol} stock={stock} timeframe={timeframe} minScore={minScore} maxDistancePct={maxDistancePct} minRiskReward={minRiskReward} zoneType={filter} zoneFreshness={zoneFreshness} watched={watchlist.includes(stock.symbol)} onWatchlist={watchlist.toggle} onChart={(selectedStock, selectedTimeframe, selectedMinScore) => { setChartStock(selectedStock); setChartTimeframe(selectedTimeframe); setChartMinScore(selectedMinScore); }} onAlert={alerts.toggleRule} hasAlert={alerts.hasRule} navigate={navigate} />)}</section>
+            )}
             {!visibleStocks.length && <section className="empty-state"><div className="empty-icon">⌕</div><h3>{loading ? "Loading market data" : "No nearby zones"}</h3><p>{loading ? "The scanner will update when candles arrive." : "Try relaxing the distance, reward/risk, or freshness filters. Zones are not replaced with demo data."}</p></section>}
       <ChartModal key={`${chartStock?.symbol || ""}-${chartTimeframe}-${chartMinScore}`} stock={chartStock} initialTimeframe={chartTimeframe} minScore={chartMinScore} onClose={() => setChartStock(null)} />
       {showMethodology && <Methodology onClose={() => setShowMethodology(false)} />}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import axios from "axios";
 import { getStockChart } from "../../lib/api.js";
 import { usePersistentArray } from "../../lib/storage.js";
 import PriceChart from "./PriceChart.jsx";
@@ -10,7 +11,7 @@ const TIMEFRAMES = [
   ["quarterly", "Quarterly"],
 ];
 
-export default function ChartModal({ stock, initialTimeframe = "daily", onClose }) {
+export default function ChartModal({ stock, initialTimeframe = "monthly", onClose }) {
   const [timeframe, setTimeframe] = useState(initialTimeframe);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ export default function ChartModal({ stock, initialTimeframe = "daily", onClose 
     getStockChart(stock.symbol, timeframe, controller.signal)
       .then(setChart)
       .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
+        if (!axios.isCancel(requestError)) setError(requestError.message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);

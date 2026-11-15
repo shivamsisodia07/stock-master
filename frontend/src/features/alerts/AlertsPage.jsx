@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import WorkspaceLayout from "../../components/WorkspaceLayout.jsx";
+import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import { money, relativeTime } from "../../lib/format.js";
 import useMarketData from "../scanner/useMarketData.js";
 import useAlerts from "./useAlerts.js";
@@ -25,16 +25,16 @@ export default function AlertsPage({ navigate }) {
   }
 
   return (
-    <WorkspaceLayout view="alerts" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length}>
+    <WorkspaceLayout view="alerts" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={market.stocks}>
       <header className="topbar">
-        <div className="breadcrumb">Workspace <span>/</span> <strong>Alerts</strong></div>
+        <Breadcrumb navigate={navigate} current="Alerts" />
         <div className="top-actions">
           <div className="market-status"><i style={{ background: market.error ? "var(--red)" : "var(--green)" }} /><span>{market.error ? "FEED UNAVAILABLE" : "ALERT MONITOR"}</span></div>
           <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : "Waiting for quotes"}</div>
         </div>
       </header>
 
-      <section className="page-heading alerts-page-heading">
+      <section className="page-heading alerts-page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />PORTFOLIO MONITORING</div>
           <h1>Price alerts, <span>in one place.</span></h1>
@@ -43,7 +43,7 @@ export default function AlertsPage({ navigate }) {
         <button className="primary-button" onClick={enableNotifications}>Enable notifications</button>
       </section>
 
-      <section className="alerts-overview" aria-label="Alert summary">
+      <section className="alerts-overview grid grid-cols-2 gap-2 min-[561px]:grid-cols-3 min-[561px]:gap-3" aria-label="Alert summary">
         <article className="alerts-stat"><span>ACTIVE RULES</span><strong>{alerts.rules.length}</strong><small>Saved zone-entry alerts</small></article>
         <article className="alerts-stat"><span>RECENT TRIGGERS</span><strong>{alerts.history.length}</strong><small>Latest events on this device</small></article>
         <article className="alerts-stat"><span>QUOTE MONITOR</span><strong className={market.error ? "status-unavailable" : ""}>{market.error ? "Offline" : "Active"}</strong><small>{market.error ? "Check the market-data API" : "Checks refreshed market prices"}</small></article>

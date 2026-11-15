@@ -485,3 +485,95 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         "zones_by_timeframe": zones_by_timeframe,
         "updated_at": _history_cache_updated_at.isoformat() if _history_cache_updated_at else None,
     }
+
+
+def _news_item(item: dict) -> dict | None:
+    content = item.get("content") if isinstance(item.get("content"), dict) else item
+    title = content.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return None
+    provider = content.get("provider")
+    canonical_url = content.get("canonicalUrl")
+    click_url = content.get("clickThroughUrl")
+    published_at = content.get("pubDate") or content.get("providerPublishTime")
+    if isinstance(published_at, (int, float)):
+        published_at = datetime.fromtimestamp(published_at, timezone.utc).isoformat()
+    return {
+        "title": title.strip(),
+        "summary": content.get("summary") if isinstance(content.get("summary"), str) else "",
+        "publisher": (
+            provider.get("displayName")
+            if isinstance(provider, dict)
+            else content.get("publisher", "")
+        ),
+        "published_at": published_at if isinstance(published_at, str) else "",
+        "url": (
+            canonical_url.get("url")
+            if isinstance(canonical_url, dict)
+            else click_url.get("url")
+            if isinstance(click_url, dict)
+            else content.get("link", "")
+        ),
+    }
+
+
+def _calendar_events(calendar) -> list[dict]:
+    events = []
+    if calendar is None:
+        return events
+    if hasattr(calendar, "iterrows"):
+        rows = ((str(label), row.tolist()) for label, row in calendar.iterrows())
+    elif isinstance(calendar, dict):
+        rows = calendar.items()
+    else:
+        return events
+
+    for label, values in rows:
+        if not any(term in label.lower() for term in ("date", "earnings", "dividend")):
+            continue
+        candidates = values if isinstance(values, (list, tuple)) else [values]
+        for value in candidates:
+            if value is None:
+                continue
+            if isinstance(value, dict):
+                candidates.extend(value.values())
+                continue
+            date_value = value.isoformat() if hasattr(value, "isoformat") else str(value)
+            if date_value.lower() in {"nan", "nat", "none"}:
+                continue
+            events.append({"title": label, "date": date_value[:10]})
+    return events
+
+
+def get_stock_news_and_events(symbol: str) -> dict:
+    normalized_symbol = symbol.upper().removesuffix(".NS")
+    ticker = yf.Ticker(f"{normalized_symbol}.NS")
+    news = []
+    events = []
+    news_error = ""
+    events_error = ""
+
+    try:
+        news = [
+            formatted
+            for item in (ticker.news or [])
+            if isinstance(item, dict)
+            if (formatted := _news_item(item)) is not None
+        ][:20]
+    except Exception as error:
+        logger.exception("Failed retrieving news for %s", normalized_symbol)
+        news_error = f"Yahoo Finance news is temporarily unavailable: {error}"
+
+    try:
+        events = _calendar_events(ticker.calendar)
+    except Exception as error:
+        logger.exception("Failed retrieving company calendar for %s", normalized_symbol)
+        events_error = f"Yahoo Finance company dates are temporarily unavailable: {error}"
+
+    return {
+        "symbol": normalized_symbol,
+        "news": news,
+        "events": events,
+        "news_error": news_error,
+        "events_error": events_error,
+    }

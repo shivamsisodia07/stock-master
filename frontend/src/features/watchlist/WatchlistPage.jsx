@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import WorkspaceLayout from "../../components/WorkspaceLayout.jsx";
+import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import ChartModal from "../chart/ChartModal.jsx";
 import useAlerts from "../alerts/useAlerts.js";
 import useMarketData from "../scanner/useMarketData.js";
@@ -15,13 +15,13 @@ export default function WatchlistPage({ navigate }) {
   const watchlist = useWatchlist();
   const alerts = useAlerts(market.stocks, !market.loading && !market.error);
   const [filter, setFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState("daily");
+  const [timeframe, setTimeframe] = useState("monthly");
   const [minScore, setMinScore] = useState(5);
   const [maxDistancePct, setMaxDistancePct] = useState(3);
   const [minRiskReward, setMinRiskReward] = useState(2);
   const [search, setSearch] = useState("");
   const [chartStock, setChartStock] = useState(null);
-  const [chartTimeframe, setChartTimeframe] = useState("daily");
+  const [chartTimeframe, setChartTimeframe] = useState("monthly");
   const [chartMinScore, setChartMinScore] = useState(5);
   const stocks = market.stocks;
 
@@ -55,25 +55,25 @@ export default function WatchlistPage({ navigate }) {
   }
 
   return (
-    <WorkspaceLayout view="watchlist" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length}>
+    <WorkspaceLayout view="watchlist" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={stocks}>
       <header className="topbar">
-        <div className="breadcrumb">My workspace <span>/</span> <strong>Watchlist</strong></div>
+        <Breadcrumb navigate={navigate} current="Watchlist" />
         <div className="top-actions">
           <div className="market-status"><i style={{ background: market.error ? "var(--red)" : "var(--green)" }} /><span>{market.error ? "FEED UNAVAILABLE" : "SAVED STOCKS"}</span></div>
           <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : "Waiting for quotes"}</div>
         </div>
       </header>
 
-      <section className="page-heading watchlist-page-heading">
+      <section className="page-heading watchlist-page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />YOUR MARKET SHORTLIST</div>
           <h1>Your watchlist<span>.</span></h1>
           <p className="page-subtitle">A focused view of the stocks you chose to follow.</p>
         </div>
-        <button className="primary-button" onClick={() => navigate("/")}>Explore the scanner</button>
+        <button className="primary-button" onClick={() => navigate("/scanner")}>Explore the scanner</button>
       </section>
 
-      <section className="watchlist-overview" aria-label="Watchlist summary">
+      <section className="watchlist-overview grid grid-cols-2 gap-2 min-[561px]:grid-cols-3 min-[561px]:gap-3" aria-label="Watchlist summary">
         <article className="watchlist-stat"><span>SAVED STOCKS</span><strong>{watchlist.symbols.length}</strong><small>Kept on this device</small></article>
         <article className="watchlist-stat"><span>IN MARKET DATA</span><strong>{market.loading ? "…" : trackedStocks.length}</strong><small>Current Nifty 100 coverage</small></article>
         <article className="watchlist-stat"><span>FRESH QUOTES</span><strong>{market.loading ? "…" : `${freshCount}/${trackedStocks.length}`}</strong><small>Latest status from the feed</small></article>
@@ -100,7 +100,7 @@ export default function WatchlistPage({ navigate }) {
         <span className="results-count">{market.updatedAt ? `Updated ${relativeTime(market.updatedAt)}` : "Waiting for market data"}</span>
       </section>
 
-      <section className="results-grid" aria-live="polite">
+      <section className="results-grid grid grid-cols-1 gap-3 min-[561px]:max-[1200px]:grid-cols-2 min-[1201px]:grid-cols-3" aria-live="polite">
         {visibleStocks.map((stock) => (
           <ZoneCard
             key={stock.symbol}
@@ -115,6 +115,7 @@ export default function WatchlistPage({ navigate }) {
             onChart={showChart}
             onAlert={alerts.toggleRule}
             hasAlert={alerts.hasRule}
+            navigate={navigate}
           />
         ))}
       </section>

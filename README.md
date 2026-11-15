@@ -43,7 +43,21 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The API is available at `http://127.0.0.1:8000`; `/api/health` checks that it is running. Set `VITE_API_URL` before starting Vite if the API is hosted elsewhere.
+The frontend uses Tailwind CSS utilities for responsive layouts and Axios for API requests. The existing stylesheet retains specialized chart and component visuals.
+
+Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The API is available at `http://127.0.0.1:8000`; `/api/health` checks that it is running. API documentation is available at `/docs` and `/api/docs`.
+
+For a backend-only deployment, build the frontend from its folder before starting FastAPI:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+The production build is written to `backend/static`; FastAPI serves the app and its client-side routes from `/`, and serves the API on `/api`. Production API calls use the same origin by default. Set `VITE_API_BASE_URL` before building only if the API is hosted on a different origin.
 
 ## Features
 
@@ -52,10 +66,11 @@ Open the Vite URL printed in the terminal (normally `http://localhost:5173`). Th
 - Downloads about two years of daily candles, ten years of weekly candles, and the maximum monthly history available from Yahoo Finance.
 - Classifies candles by the 50% body/range rule; detects DBR, RBR, RBD, DBD, and direct no-base reversals. Still-forming candles are excluded from zone detection.
 - Discards broken zones, zones with two or more retests, and zones without a closing move beyond the leg-in extreme within the first three leg-out candles. A body crossing the proximal line counts as a retest; a wick-only touch counts only if followed by a later exciting leg-out in the zone's direction. Closes beyond the distal line break the zone.
-- Shows the nearest daily demand and supply zones within 3% of the last daily close, weekly/monthly/quarterly context, a weighted zone score out of 7, and the current quote's location between the distal-line stop and target. Zones below 5/7 are excluded throughout the scanner and chart overlays.
+- Shows the selected timeframe's nearby demand and supply zones, a weighted zone score out of 7, and the current quote's location between the distal-line stop and target. Monthly is the default timeframe; other timeframe context is shown on each stock's detail page. Zones below 5/7 are excluded throughout the scanner and chart overlays.
 - Filters scanner and watchlist results by timeframe, demand/supply, score (5 to 7 in half-point increments), zone freshness (fresh or tested once), entry distance, and reward-to-risk.
 - Measures entry distance from the proximal line, shows the stop-to-target range and current-price location, and filters by entry distance and minimum reward-to-risk (default 2R).
-- Provides standalone `/watchlist` and `/alerts` pages with their own page headers and content, plus browser back/forward navigation and saved data retained between routes.
+- Provides a home page, learning center, scanner, watchlist, alerts, and per-stock detail pages with browser back/forward navigation. The learning center covers price action, zone identification, scoring, strategy frameworks, trade planning, and risk. Stock detail pages show trade plans for every available timeframe plus recent Yahoo Finance news and company calendar dates.
+- Offers compact table and tile layouts for scanner results.
 - Imports OHLC CSV files with date, symbol, open, high, low, close, and volume columns; imported prices remain static, while weekly and monthly candles are aggregated from the provided daily data.
 - Saves watchlist symbols, alert rules, and recent alert history in browser storage. Optional browser notifications trigger when a refreshed quote enters a saved zone.
 - Provides full-page interactive candlestick charts with one nearest zone per timeframe. The selected timeframe is shown by default; overlays for other timeframes can be toggled individually or hidden together. Charts also support daily/weekly/monthly/quarterly views, volume, SMA 20/50 overlays, crosshair OHLC details, pan/zoom, and per-stock notes.

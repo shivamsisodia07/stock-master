@@ -3,7 +3,13 @@ from datetime import date, timedelta
 from unittest.mock import patch
 
 from backend.services.csv_import import parse_ohlc_csv
-from backend.services.market_data import _nearest_chart_zones, get_chart_data, import_csv_market_data
+from backend.services.market_data import (
+    _calendar_events,
+    _nearest_chart_zones,
+    _news_item,
+    get_chart_data,
+    import_csv_market_data,
+)
 
 
 def csv_for_days(count: int = 30) -> str:
@@ -16,6 +22,38 @@ def csv_for_days(count: int = 30) -> str:
 
 
 class CsvImportTests(unittest.TestCase):
+    def test_formats_current_and_legacy_news_items(self):
+        current = _news_item({
+            "content": {
+                "title": "Company update",
+                "summary": "Quarterly update",
+                "pubDate": "2025-01-03T10:00:00Z",
+                "provider": {"displayName": "Market News"},
+                "canonicalUrl": {"url": "https://example.test/news"},
+            },
+        })
+        legacy = _news_item({
+            "title": "Legacy headline",
+            "publisher": "Wire",
+            "providerPublishTime": 1735898400,
+            "link": "https://example.test/legacy",
+        })
+
+        self.assertEqual(current["title"], "Company update")
+        self.assertEqual(current["publisher"], "Market News")
+        self.assertEqual(current["url"], "https://example.test/news")
+        self.assertEqual(legacy["publisher"], "Wire")
+        self.assertTrue(legacy["published_at"].startswith("2025-01-"))
+
+    def test_formats_calendar_date_values(self):
+        events = _calendar_events({
+            "Earnings Date": ["2025-01-03T00:00:00"],
+            "Ex-Dividend Date": None,
+            "Revenue Estimate": 120,
+        })
+
+        self.assertEqual(events, [{"title": "Earnings Date", "date": "2025-01-03"}])
+
     def test_parses_quoted_headers_and_sorts_candles(self):
         source = csv_for_days()
         lines = source.splitlines()

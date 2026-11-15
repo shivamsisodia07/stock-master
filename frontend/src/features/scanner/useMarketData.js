@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import axios from "axios";
 import { getMarketData } from "../../lib/api.js";
 
 const POLL_INTERVAL = 60_000;
@@ -26,7 +27,7 @@ export default function useMarketData() {
       setFailedBatches(payload.failed_batches || []);
       setError("");
     } catch (requestError) {
-      if (requestError.name !== "AbortError") {
+      if (!axios.isCancel(requestError)) {
         setError(requestError.message || "Unable to load market data. Check that the Python API is running.");
       }
     } finally {
