@@ -74,8 +74,8 @@ def _frontend_file(path: str = "") -> Path:
 
 
 @app.get("/", include_in_schema=False)
-async def frontend_home() -> FileResponse:
-    return FileResponse(_frontend_file())
+async def frontend_home() -> RedirectResponse:
+    return RedirectResponse(url="/swingtrader")
 
 
 @app.get("/{path:path}", include_in_schema=False)

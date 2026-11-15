@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { appRoutePath } from "../lib/useAppRouter.js";
 
 function followRoute(event, navigate, path) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -139,7 +140,7 @@ export default function WorkspaceLayout({
     <div className={shellClass}>
       <header className="site-header">
         <div className="site-header-left">
-          <a className="site-header-brand" href="/" onClick={(event) => followRoute(event, navigate, "/")} aria-label="swingTrader home">
+          <a className="site-header-brand" href={appRoutePath("/")} onClick={(event) => followRoute(event, navigate, "/")} aria-label="swingTrader home">
             <BrandMark />
             <span><strong>swingTrader</strong></span>
           </a>
@@ -163,23 +164,23 @@ export default function WorkspaceLayout({
         </div>
       </header>
       <aside className="sidebar">
-        {/* <a className="brand" href="/" onClick={(event) => followRoute(event, navigate, "/")} aria-label="swingTrader home">
+        {/* <a className="brand" href="/swingtrader" onClick={(event) => followRoute(event, navigate, "/")} aria-label="swingTrader home">
           <BrandMark />
           <span>swingTrader<small className="brand-sub">PRICE STRUCTURE RESEARCH</small></span>
         </a> */}
-        <a href="/" title="Home" className={`nav-item ${view === "home" ? "active" : ""}`} aria-current={view === "home" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/")}>
+        <a href={appRoutePath("/")} title="Home" className={`nav-item ${view === "home" ? "active" : ""}`} aria-current={view === "home" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/")}>
           <span className="nav-icon">⌂</span> Home
         </a>
-        <a href="/scanner" title="Zone scanner" className={`nav-item ${view === "scanner" ? "active" : ""}`} aria-current={view === "scanner" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/scanner")}>
+        <a href={appRoutePath("/scanner")} title="Zone scanner" className={`nav-item ${view === "scanner" ? "active" : ""}`} aria-current={view === "scanner" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/scanner")}>
           <span className="nav-icon">◫</span> Zone scanner {scannerCount != null && <span className="nav-count">{scannerCount}</span>}
         </a>
-        <a href="/watchlist" title="Watchlist" className={`nav-item ${view === "watchlist" ? "active" : ""}`} aria-current={view === "watchlist" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/watchlist")}>
+        <a href={appRoutePath("/watchlist")} title="Watchlist" className={`nav-item ${view === "watchlist" ? "active" : ""}`} aria-current={view === "watchlist" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/watchlist")}>
           <span className="nav-icon">☆</span> Watchlist <span className="nav-count">{watchlistCount}</span>
         </a>
-        <a href="/alerts" title="Alerts" className={`nav-item ${view === "alerts" ? "active" : ""}`} aria-current={view === "alerts" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/alerts")}>
+        <a href={appRoutePath("/alerts")} title="Alerts" className={`nav-item ${view === "alerts" ? "active" : ""}`} aria-current={view === "alerts" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/alerts")}>
           <span className="nav-icon">◉</span> Alerts <span className="nav-count">{alertCount}</span>
         </a>
-        <a href="/learn" title="Learn" className={`nav-item ${view === "learn" ? "active" : ""}`} aria-current={view === "learn" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/learn")}>
+        <a href={appRoutePath("/learn")} title="Learn" className={`nav-item ${view === "learn" ? "active" : ""}`} aria-current={view === "learn" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/learn")}>
           <span className="nav-icon">⌁</span> Learn
         </a>
         <div className="side-label strategy-label">TIMEFRAMES</div>
