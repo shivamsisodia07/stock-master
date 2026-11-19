@@ -38,13 +38,16 @@ export function tradePlanFor(stock, timeframe, zone) {
   const reward = (target - entry) * direction;
   const low = Math.min(stop, target);
   const high = Math.max(stop, target);
+  const zoneLow = Math.min(entry, stop);
+  const zoneHigh = Math.max(entry, stop);
+  const isInsideZone = stock.price >= zoneLow && stock.price <= zoneHigh;
 
   return {
     entry,
     stop,
     target,
     riskReward: reward / risk,
-    entryDistancePct: Math.abs(stock.price - entry) / entry * 100,
+    entryDistancePct: isInsideZone ? 0 : Math.abs(stock.price - entry) / entry * 100,
     currentPositionPct: ((stock.price - low) / (high - low || 1)) * 100,
     targetLabel: hasOpposingTarget ? "Opposing zone" : "2R target",
   };

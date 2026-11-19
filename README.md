@@ -73,7 +73,7 @@ The production build is written to `backend/static`; FastAPI serves the app and 
 - Offers compact table and tile layouts for scanner results.
 - Imports OHLC CSV files with date, symbol, open, high, low, close, and volume columns; imported prices remain static, while weekly and monthly candles are aggregated from the provided daily data.
 - Saves watchlist symbols, alert rules, and recent alert history in browser storage. Optional browser notifications trigger when a refreshed quote enters a saved zone.
-- Provides full-page interactive candlestick charts with one nearest zone per timeframe. The selected timeframe is shown by default; overlays for other timeframes can be toggled individually or hidden together. Charts also support daily/weekly/monthly/quarterly views, volume, SMA 20/50 overlays, crosshair OHLC details, pan/zoom, and per-stock notes.
+- Provides full-page interactive candlestick charts with one nearest zone per timeframe. The selected timeframe is shown by default; overlays for other timeframes can be toggled individually or hidden together. Charts also support daily/weekly/monthly/quarterly views, volume, SMA 20/50 and EMA 9/20/50 overlays, crosshair OHLC details, pan/zoom, and per-stock notes.
 
 ### Zone score
 

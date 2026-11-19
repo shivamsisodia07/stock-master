@@ -25,6 +25,19 @@ function movingAverageData(candles, period) {
   }, []);
 }
 
+function exponentialMovingAverageData(candles, period) {
+  const alpha = 2 / (period + 1);
+  let seedTotal = 0;
+  let previousEma = null;
+  return candles.reduce((result, candle, index) => {
+    if (index < period) seedTotal += candle.close;
+    if (index === period - 1) previousEma = seedTotal / period;
+    else if (index >= period) previousEma = candle.close * alpha + previousEma * (1 - alpha);
+    if (index >= period - 1) result.push({ time: candle.date, value: previousEma });
+    return result;
+  }, []);
+}
+
 export default function PriceChart({ candles, zonesByTimeframe, currentPrice, selectedTimeframe }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
@@ -33,10 +46,14 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
   const volumeSeriesRef = useRef(null);
   const sma20SeriesRef = useRef(null);
   const sma50SeriesRef = useRef(null);
+  const emaSeriesRefs = useRef({});
   const [hoveredCandle, setHoveredCandle] = useState(null);
   const [showVolume, setShowVolume] = useState(true);
   const [showSma20, setShowSma20] = useState(false);
   const [showSma50, setShowSma50] = useState(false);
+  const [showEma9, setShowEma9] = useState(false);
+  const [showEma20, setShowEma20] = useState(false);
+  const [showEma50, setShowEma50] = useState(false);
   const [showZones, setShowZones] = useState(true);
   const [visibleTimeframes, setVisibleTimeframes] = useState([selectedTimeframe]);
 
@@ -121,6 +138,27 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
       });
       smaSeries.setData(sma50);
       sma50SeriesRef.current = smaSeries;
+    }
+
+    emaSeriesRefs.current = {};
+    const emaConfigs = [
+      [9, "#f5c451", showEma9],
+      [20, "#4dc6d0", showEma20],
+      [50, "#ba8df5", showEma50],
+    ];
+    for (const [period, color, visible] of emaConfigs) {
+      const emaData = exponentialMovingAverageData(candles, period);
+      if (!emaData.length) continue;
+      const emaSeries = chart.addSeries(LineSeries, {
+        color,
+        lineWidth: 2,
+        title: `EMA ${period}`,
+        visible,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      emaSeries.setData(emaData);
+      emaSeriesRefs.current[period] = emaSeries;
     }
 
     const zoneLines = [];
@@ -212,6 +250,7 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
       volumeSeriesRef.current = null;
       sma20SeriesRef.current = null;
       sma50SeriesRef.current = null;
+      emaSeriesRefs.current = {};
     };
   }, [candles, zonesByTimeframe, selectedTimeframe]);
 
@@ -238,6 +277,18 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
     sma50SeriesRef.current?.applyOptions({ visible: showSma50 });
   }, [showSma50]);
 
+  useEffect(() => {
+    emaSeriesRefs.current[9]?.applyOptions({ visible: showEma9 });
+  }, [showEma9]);
+
+  useEffect(() => {
+    emaSeriesRefs.current[20]?.applyOptions({ visible: showEma20 });
+  }, [showEma20]);
+
+  useEffect(() => {
+    emaSeriesRefs.current[50]?.applyOptions({ visible: showEma50 });
+  }, [showEma50]);
+
   if (!candles?.length) return <div className="chart-empty">No candles available for this timeframe.</div>;
   const displayedCandle = hoveredCandle || candles[candles.length - 1];
 
@@ -260,6 +311,9 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
           <button className={`chart-toggle ${showVolume ? "active" : ""}`} aria-pressed={showVolume} onClick={() => setShowVolume((visible) => !visible)}>Volume</button>
           <button className={`chart-toggle ${showSma20 ? "active" : ""}`} aria-pressed={showSma20} onClick={() => setShowSma20((visible) => !visible)}>SMA 20</button>
           <button className={`chart-toggle ${showSma50 ? "active" : ""}`} aria-pressed={showSma50} onClick={() => setShowSma50((visible) => !visible)}>SMA 50</button>
+          <button className={`chart-toggle ema-9-toggle ${showEma9 ? "active" : ""}`} aria-pressed={showEma9} onClick={() => setShowEma9((visible) => !visible)}>EMA 9</button>
+          <button className={`chart-toggle ema-20-toggle ${showEma20 ? "active" : ""}`} aria-pressed={showEma20} onClick={() => setShowEma20((visible) => !visible)}>EMA 20</button>
+          <button className={`chart-toggle ema-50-toggle ${showEma50 ? "active" : ""}`} aria-pressed={showEma50} onClick={() => setShowEma50((visible) => !visible)}>EMA 50</button>
           <button className="chart-reset-button" onClick={() => chartRef.current?.timeScale().fitContent()}>Reset zoom</button>
         </div>
       </div>

@@ -594,6 +594,7 @@ h1 span {
   gap: 9px;
   align-items: center;
   min-width: 0;
+  cursor: pointer;
 }
 .stock-avatar {
   height: 31px;
@@ -2523,6 +2524,21 @@ h1 span {
   background: #182d29;
   color: #9ce8bd;
 }
+.chart-toggle.ema-9-toggle.active {
+  border-color: #80652f;
+  background: #382e1b;
+  color: #f5c451;
+}
+.chart-toggle.ema-20-toggle.active {
+  border-color: #28666b;
+  background: #183237;
+  color: #4dc6d0;
+}
+.chart-toggle.ema-50-toggle.active {
+  border-color: #644986;
+  background: #2b2238;
+  color: #ba8df5;
+}
 .chart-help {
   padding-top: 6px;
   color: #718099;
@@ -3678,6 +3694,21 @@ h1 span {
   background: #e8f5ed;
   color: #176345;
 }
+:root[data-theme="light"] .chart-toggle.ema-9-toggle.active {
+  border-color: #e2c76e;
+  background: #fff7db;
+  color: #795a08;
+}
+:root[data-theme="light"] .chart-toggle.ema-20-toggle.active {
+  border-color: #8acbd0;
+  background: #e6f7f8;
+  color: #17666d;
+}
+:root[data-theme="light"] .chart-toggle.ema-50-toggle.active {
+  border-color: #c1a6e4;
+  background: #f4edfc;
+  color: #654192;
+}
 :root[data-theme="light"] .home-hero {
   border-color: #d8e0eb;
   background: radial-gradient(ellipse at 82% 15%, #74c6a51a, transparent 38%), linear-gradient(120deg, #eaf1f8, #fff 75%);
@@ -3885,4 +3916,336 @@ h1 span {
 }
 .price-range-compact .range-labels {
   font-size: 7px;
+}
+.zone-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  padding: 15px;
+  background: linear-gradient(145deg, #162238, #111a2a);
+}
+.zone-card.demand-card {
+  border-top: 2px solid #48c998;
+}
+.zone-card.supply-card {
+  border-top: 2px solid #ed8c92;
+}
+.zone-card .card-top {
+  align-items: center;
+  gap: 8px;
+}
+.zone-card .stock-identity {
+  flex: 1;
+  gap: 0;
+  overflow: hidden;
+}
+.zone-card .stock-title {
+  min-width: 0;
+}
+.zone-card .card-actions {
+  flex: none;
+  gap: 6px;
+}
+.zone-card .watch-button {
+  min-width: 28px;
+}
+.zone-card .score-badge {
+  padding: 5px 7px;
+  font-size: 10px;
+}
+.zone-card .price-row {
+  margin-top: 13px;
+}
+.zone-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 11px;
+}
+.zone-type-pill,
+.zone-pattern-pill,
+.zone-freshness-pill {
+  border: 1px solid #34445c;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #b7c5d9;
+  font: 8px var(--mono);
+  text-transform: uppercase;
+}
+.zone-type-pill.demand-pill {
+  border-color: #286d55;
+  background: #153329;
+  color: #88e0b7;
+}
+.zone-type-pill.supply-pill {
+  border-color: #75434b;
+  background: #36232b;
+  color: #f0a3a5;
+}
+.zone-pattern-pill {
+  color: #acbbd1;
+  background: #1b2940;
+}
+.zone-freshness-pill.fresh-pill {
+  border-color: #37644e;
+  background: #1a3028;
+  color: #9cddb7;
+}
+.zone-freshness-pill.tested-pill {
+  border-color: #735d37;
+  background: #342d21;
+  color: #e8c37a;
+}
+.price-range.zone-price-range {
+  margin: 12px 0 0;
+  padding: 12px 11px 10px;
+  border-color: #2e3c53;
+  border-radius: 8px;
+  background: #101929;
+}
+.zone-range-head {
+  display: flex;
+  align-items: center;
+}
+.zone-range-title {
+  color: #7f90a9;
+  font: 8px var(--mono);
+  letter-spacing: 0.06em;
+}
+.zone-range-track {
+  position: relative;
+  height: 12px;
+  margin: 19px 6px 11px;
+  border-radius: 999px;
+  background: #29364b;
+}
+.zone-range-band {
+  position: absolute;
+  top: 3px;
+  height: 6px;
+  border-radius: 999px;
+}
+.demand-range .zone-range-band {
+  background: linear-gradient(90deg, #258d68, #55d5a1);
+}
+.supply-range .zone-range-band {
+  background: linear-gradient(90deg, #d86d76, #f3a18e);
+}
+.zone-distal-marker,
+.zone-proximal-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 18px;
+  transform: translateX(-50%);
+}
+.zone-distal-marker {
+  background: #f4bd67;
+}
+.zone-proximal-marker {
+  background: #7fc7ff;
+}
+.zone-current-marker {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #101929;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px #fff, 0 0 6px #000b;
+}
+.zone-range-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  color: #8b9ab0;
+  font: 7px var(--mono);
+}
+.zone-range-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.zone-range-legend b {
+  color: #d3deed;
+  font-size: 8px;
+  font-weight: 500;
+}
+.zone-range-legend i {
+  width: 2px;
+  height: 9px;
+  border-radius: 2px;
+  background: #f4bd67;
+}
+.zone-range-legend .proximal-key {
+  background: #7fc7ff;
+}
+.zone-range-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid #25334a;
+  color: #8392a8;
+  font: 7px var(--mono);
+}
+.zone-range-metrics > span {
+  display: grid;
+  gap: 4px;
+}
+.zone-range-metrics b {
+  color: #d8e2f0;
+  font-size: 9px;
+  font-weight: 500;
+}
+.zone-range-metrics .risk-reward-metric {
+  /* margin-left: auto; */
+  /* border: 1px solid #80652f; */
+  /* border-radius: 6px; */
+  /* padding: 6px 8px; */
+  /* background: #382e1b; */
+  color: #f2ce7a;
+  /* font-size: 8px; */
+}
+.zone-range-metrics .risk-reward-metric b {
+  color: #ffdc8c;
+  /* font-size: 12px; */
+  /* font-weight: 700; */
+}
+.zone-range-metrics .current-price-value {
+  grid-template-columns: auto auto;
+  align-items: center;
+}
+.current-price-value i {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px #8797ad;
+}
+.current-price-value b {
+  grid-column: 2;
+}
+.score-reasons {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #25334a;
+}
+.score-reasons-title {
+  display: flex;
+  justify-content: space-between;
+  color: #aab9ce;
+  font: 600 9px var(--sans);
+}
+.score-reasons-title span {
+  color: #91dcb3;
+  font-family: var(--mono);
+}
+.score-reasons-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.score-reason {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #29364a;
+  border-radius: 6px;
+  padding: 7px;
+  color: #9eacc1;
+  font: 8px var(--sans);
+}
+.score-reason b {
+  color: #8dd9af;
+  font: 600 10px var(--mono);
+}
+.score-reason small {
+  color: #73839b;
+  font-size: 7px;
+  line-height: 1.3;
+}
+.score-reasons-unavailable {
+  margin: 7px 0 0;
+  color: #8492a8;
+  font-size: 9px;
+}
+.zone-more-info {
+  margin-top: 11px;
+}
+.zone-more-info summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  color: #9eacc1;
+  font: 600 9px var(--sans);
+  list-style: none;
+}
+.zone-more-info summary::-webkit-details-marker {
+  display: none;
+}
+.zone-more-info summary::after {
+  content: "+";
+  color: #91a1b8;
+  font: 12px var(--mono);
+}
+.zone-more-info[open] summary::after {
+  content: "−";
+}
+:root[data-theme="light"] .zone-card {
+  background: linear-gradient(145deg, #fff, #f8fafc);
+}
+:root[data-theme="light"] .price-range.zone-price-range {
+  background: #f7f9fc;
+}
+:root[data-theme="light"] .zone-range-metrics b {
+  color: #26364d;
+}
+:root[data-theme="light"] .zone-range-metrics .risk-reward-metric {
+  border-color: #e2c76e;
+  background: #fff7db;
+  color: #795a08;
+}
+:root[data-theme="light"] .zone-range-metrics .risk-reward-metric b {
+  color: #6f5200;
+}
+:root[data-theme="light"] .zone-range-track {
+  background: #dbe3ed;
+}
+:root[data-theme="light"] .zone-range-legend b {
+  color: #26364d;
+}
+:root[data-theme="light"] .zone-current-marker {
+  border-color: #f7f9fc;
+  background: #344967;
+  box-shadow: 0 0 0 1px #344967, 0 0 6px #34496744;
+}
+:root[data-theme="light"] .zone-range-metrics,
+:root[data-theme="light"] .score-reasons {
+  border-color: #dce3ed;
+}
+:root[data-theme="light"] .score-reasons-title,
+:root[data-theme="light"] .score-reason,
+:root[data-theme="light"] .zone-more-info summary {
+  color: #4a5b73;
+}
+:root[data-theme="light"] .score-reason {
+  border-color: #dce3ed;
+}
+:root[data-theme="light"] .score-reason b,
+:root[data-theme="light"] .score-reasons-title span {
+  color: #176345;
+}
+:root[data-theme="light"] .score-reason small {
+  color: #68778c;
 }
