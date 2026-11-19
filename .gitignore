@@ -3,6 +3,7 @@ venv/
 stock_master_env_*/
 __pycache__/
 *.py[cod]
+*.sqlite3
 .pytest_cache/
 .env
 .env.*

@@ -74,6 +74,7 @@ The production build is written to `backend/static`; FastAPI serves the app and 
 - Imports OHLC CSV files with date, symbol, open, high, low, close, and volume columns; imported prices remain static, while weekly and monthly candles are aggregated from the provided daily data.
 - Saves watchlist symbols, alert rules, and recent alert history in browser storage. Optional browser notifications trigger when a refreshed quote enters a saved zone.
 - Provides full-page interactive candlestick charts with one nearest zone per timeframe. The selected timeframe is shown by default; overlays for other timeframes can be toggled individually or hidden together. Charts also support daily/weekly/monthly/quarterly views, volume, SMA 20/50 and EMA 9/20/50 overlays, crosshair OHLC details, pan/zoom, and per-stock notes.
+- Stores the latest nightly scan for all six income-trade setups in SQLite and displays its matches and scan status on the home dashboard.
 
 ### Zone score
 
@@ -97,6 +98,23 @@ frontend/
 ```
 
 CSV imports accept common header aliases such as `timestamp`, `ticker`, `o`, `h`, `l`, `c`, and `vol`. Each included symbol needs at least 25 valid daily candles. Weekly, monthly, and quarterly candles are aggregated from the imported daily data. Imported CSV prices do not update live; return to live data to resume Yahoo Finance quotes and alert evaluation.
+
+## Nightly income-trade scans
+
+The scheduled command scans all six income-trade setups across the Nifty 100 and saves results to `backend/data/trade_scans.sqlite3`. The Home dashboard shows matches from the latest run. Set `TRADE_SCAN_DB_PATH` if the database should live elsewhere. Run one scan manually from the project root with:
+
+```powershell
+python -m backend.jobs.nightly_trade_scan
+```
+
+On a Linux host with cron, add this to the crontab to run every night at 10:00 PM India time:
+
+```cron
+CRON_TZ=Asia/Kolkata
+0 22 * * * cd /path/to/stock-master && /path/to/stock-master/.venv/bin/python -m backend.jobs.nightly_trade_scan >> /path/to/stock-master/backend/data/nightly-trade-scan.log 2>&1
+```
+
+Replace both project paths with the absolute deployment path. If your cron implementation does not support `CRON_TZ`, configure the host's timezone as `Asia/Kolkata`. On Windows, create a daily 10:00 PM task in Task Scheduler that runs `python.exe` with `-m backend.jobs.nightly_trade_scan` as arguments and the project root as **Start in**. A run that has setup-level or per-stock failures is saved for review and exits with a non-zero status.
 
 ## Data and risk notes
 

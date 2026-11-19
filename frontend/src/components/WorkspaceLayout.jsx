@@ -174,6 +174,9 @@ export default function WorkspaceLayout({
         <a href={appRoutePath("/scanner")} title="Zone scanner" className={`nav-item ${view === "scanner" ? "active" : ""}`} aria-current={view === "scanner" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/scanner")}>
           <span className="nav-icon">◫</span> Zone scanner {scannerCount != null && <span className="nav-count">{scannerCount}</span>}
         </a>
+        <a href={appRoutePath("/income-trades")} title="Income trades" className={`nav-item ${view === "income-trades" ? "active" : ""}`} aria-current={view === "income-trades" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/income-trades")}>
+          <span className="nav-icon">↗</span> Income trades
+        </a>
         <a href={appRoutePath("/watchlist")} title="Watchlist" className={`nav-item ${view === "watchlist" ? "active" : ""}`} aria-current={view === "watchlist" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/watchlist")}>
           <span className="nav-icon">☆</span> Watchlist <span className="nav-count">{watchlistCount}</span>
         </a>

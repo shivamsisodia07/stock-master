@@ -39,3 +39,15 @@ export function importCsv(content) {
     data: { content },
   });
 }
+
+export function getIncomeTradeModes(signal) {
+  return request(API_ROUTES.INCOME_TRADE_MODES, signal);
+}
+
+export function getLatestIncomeTradeScan(signal) {
+  return request(API_ROUTES.INCOME_TRADE_LATEST, signal);
+}
+
+export function scanIncomeTrades(mode, symbol, signal) {
+  return request(API_ROUTES.INCOME_TRADE_SCAN(mode, symbol), signal);
+}

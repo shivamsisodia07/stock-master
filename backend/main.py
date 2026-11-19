@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from backend.services.market_data import get_chart_data, get_market_data, get_stock_news_and_events, import_csv_market_data
+from backend.services.tradesetup import SETUPS, analyze_symbol, scan_nifty100
+from backend.services.trade_scan_store import get_latest_trade_scan
 
 app = FastAPI(title="swingTrader Market Data API", version="2.0.0")
 FRONTEND_DIRECTORY = Path(__file__).resolve().parent / "static"
@@ -53,6 +55,33 @@ async def stock_chart(symbol: str, timeframe: str = Query(default="daily")) -> d
 @app.get("/api/stocks/{symbol}/news")
 async def stock_news(symbol: str) -> dict:
     return await asyncio.to_thread(get_stock_news_and_events, symbol)
+
+
+@app.get("/api/income-trades/modes")
+async def income_trade_modes() -> dict:
+    return {"setups": SETUPS}
+
+
+@app.get("/api/income-trades/latest")
+async def latest_income_trade_scan() -> dict:
+    return await asyncio.to_thread(get_latest_trade_scan)
+
+
+@app.get("/api/income-trades/scan")
+async def income_trade_scan(mode: str = Query(default="MIT"), symbol: str | None = None) -> dict:
+    normalized_mode = mode.upper()
+    if normalized_mode not in SETUPS:
+        raise HTTPException(status_code=400, detail="Mode must be one of HIT, DIT, WIT, MIT, QIT, YIT.")
+    if symbol:
+        try:
+            row = await asyncio.to_thread(analyze_symbol, symbol.strip().upper(), normalized_mode)
+        except Exception as error:
+            raise HTTPException(status_code=502, detail=f"Unable to scan {symbol}: {error}") from error
+        return {"mode": normalized_mode, "setup": SETUPS[normalized_mode], "matched": 1 if row else 0, "rows": [row] if row else []}
+    try:
+        return await asyncio.to_thread(scan_nifty100, normalized_mode)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Unable to run the Nifty 100 scan: {error}") from error
 
 
 @app.get("/api/docs", include_in_schema=False)
