@@ -82,6 +82,7 @@ class CsvImportTests(unittest.TestCase):
         weekly = get_chart_data("TEST", "weekly")
         monthly = get_chart_data("TEST", "monthly")
         quarterly = get_chart_data("TEST", "quarterly")
+        self.assertEqual(weekly["current_price"], 101)
         self.assertGreater(len(weekly["candles"]), 1)
         self.assertEqual(len(monthly["candles"]), 1)
         self.assertEqual(len(quarterly["candles"]), 1)

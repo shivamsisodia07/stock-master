@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
-import ChartModal from "../chart/ChartModal.jsx";
 import useAlerts from "../alerts/useAlerts.js";
 import useMarketData from "../scanner/useMarketData.js";
 import ZoneCard from "../scanner/ZoneCard.jsx";
@@ -20,9 +19,6 @@ export default function WatchlistPage({ navigate }) {
   const [maxDistancePct, setMaxDistancePct] = useState(3);
   const [minRiskReward, setMinRiskReward] = useState(2);
   const [search, setSearch] = useState("");
-  const [chartStock, setChartStock] = useState(null);
-  const [chartTimeframe, setChartTimeframe] = useState("monthly");
-  const [chartMinScore, setChartMinScore] = useState(5);
   const stocks = market.stocks;
 
   const trackedStocks = useMemo(
@@ -47,12 +43,6 @@ export default function WatchlistPage({ navigate }) {
 
   const matchingCount = visibleStocks.length;
   const freshCount = trackedStocks.filter((stock) => ["fresh", "session close"].includes(stock.freshness.status)).length;
-
-  function showChart(stock, selectedTimeframe, selectedMinScore) {
-    setChartStock(stock);
-    setChartTimeframe(selectedTimeframe);
-    setChartMinScore(selectedMinScore);
-  }
 
   return (
     <WorkspaceLayout view="watchlist" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={stocks}>
@@ -112,7 +102,6 @@ export default function WatchlistPage({ navigate }) {
             zoneType={filter}
             watched={watchlist.includes(stock.symbol)}
             onWatchlist={watchlist.toggle}
-            onChart={showChart}
             onAlert={alerts.toggleRule}
             hasAlert={alerts.hasRule}
             navigate={navigate}
@@ -128,7 +117,6 @@ export default function WatchlistPage({ navigate }) {
         </section>
       )}
 
-      <ChartModal key={`${chartStock?.symbol || ""}-${chartTimeframe}-${chartMinScore}`} stock={chartStock} initialTimeframe={chartTimeframe} minScore={chartMinScore} onClose={() => setChartStock(null)} />
     </WorkspaceLayout>
   );
 }

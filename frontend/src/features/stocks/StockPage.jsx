@@ -3,8 +3,8 @@ import axios from "axios";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import { getStockNews } from "../../lib/api.js";
 import { money, relativeTime } from "../../lib/format.js";
+import { appRoutePath } from "../../lib/useAppRouter.js";
 import useAlerts from "../alerts/useAlerts.js";
-import ChartModal from "../chart/ChartModal.jsx";
 import useMarketData from "../scanner/useMarketData.js";
 import { TIMEFRAMES, tradePlanFor, zonesFor } from "../scanner/zones.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
@@ -61,8 +61,6 @@ export default function StockPage({ navigate, symbol }) {
   const watchlist = useWatchlist();
   const alerts = useAlerts(market.stocks, !market.loading && !market.error);
   const stock = useMemo(() => market.stocks.find((item) => item.symbol.toLowerCase() === symbol?.toLowerCase()), [market.stocks, symbol]);
-  const [chartTimeframe, setChartTimeframe] = useState("monthly");
-  const [showChart, setShowChart] = useState(false);
 
   if (!market.loading && !market.error && !stock) {
     return (
@@ -91,7 +89,7 @@ export default function StockPage({ navigate, symbol }) {
           </div>
           <div className="stock-detail-actions">
             <button className={`watch-button ${watchlist.includes(stock.symbol) ? "watch-active" : ""}`} onClick={() => watchlist.toggle(stock.symbol)}>{watchlist.includes(stock.symbol) ? "★ Saved" : "☆ Save stock"}</button>
-            <button className="primary-button" onClick={() => setShowChart(true)}>Open chart</button>
+            <a className="primary-button chart-new-tab-primary" href={appRoutePath(`/charts/${encodeURIComponent(stock.symbol)}/monthly`)} target="_blank" rel="noreferrer">Open chart ↗</a>
           </div>
         </section>
 
@@ -113,10 +111,28 @@ export default function StockPage({ navigate, symbol }) {
               });
               return (
                 <article className="stock-timeframe-card" key={timeframe}>
-                  <div className="stock-timeframe-heading"><strong>{label}</strong><button className="text-button" onClick={() => { setChartTimeframe(timeframe); setShowChart(true); }}>Chart ↗</button></div>
+                  <div className="stock-timeframe-heading">
+                    <strong>{label}</strong>
+                    {stock.trends?.[timeframe] && (
+                      <span className={`trend-badge ${stock.trends[timeframe].trend.toLowerCase()}`}>
+                        {stock.trends[timeframe].trend}
+                      </span>
+                    )}
+                    <a className="text-button chart-new-tab-link" href={appRoutePath(`/charts/${encodeURIComponent(stock.symbol)}/${timeframe}`)} target="_blank" rel="noreferrer">Chart ↗</a>
+                  </div>
+                  {stock.trends?.[timeframe] && (
+                    <div className="stock-trend-detail">
+                      <span>CMP {stock.trends[timeframe].cmp_position}</span>
+                      <strong>{stock.trends[timeframe].action}</strong>
+                    </div>
+                  )}
                   {!trades.length ? <div className="empty-alerts">No qualifying nearby trade setup.</div> : trades.map(({ zone, plan, type }) => (
                     <div className={`stock-trade-row ${type}`} key={zone.id || type}>
-                      <div className="stock-trade-type"><strong>{type} setup</strong><span>{zone.pattern} · {zone.freshness} · {zone.score}/7</span></div>
+                      <div className="stock-trade-type">
+                        <strong>{type} setup</strong>
+                        <span>{zone.pattern} · {zone.freshness} · {zone.score}/7</span>
+                        <button className={`table-alert stock-trade-alert ${alerts.hasRule(stock, zone) ? "alert-active" : ""}`} type="button" aria-pressed={alerts.hasRule(stock, zone)} onClick={() => alerts.toggleRule(stock, zone)}>{alerts.hasRule(stock, zone) ? "Alert on" : "Add alert"}</button>
+                      </div>
                       <dl><div><dt>Entry</dt><dd>{money(plan.entry)}</dd></div><div><dt>Stop</dt><dd>{money(plan.stop)}</dd></div><div><dt>Target</dt><dd>{money(plan.target)}</dd></div><div><dt>Reward / risk</dt><dd>{plan.riskReward.toFixed(1)}R</dd></div></dl>
                     </div>
                   ))}
@@ -128,7 +144,6 @@ export default function StockPage({ navigate, symbol }) {
 
         <section className="stock-news-section"><StockNews symbol={stock.symbol} /></section>
       </>}
-      <ChartModal key={`${stock?.symbol || ""}-${chartTimeframe}`} stock={showChart ? stock : null} initialTimeframe={chartTimeframe} onClose={() => setShowChart(false)} />
     </WorkspaceLayout>
   );
 }

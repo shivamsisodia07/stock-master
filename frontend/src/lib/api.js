@@ -51,3 +51,29 @@ export function getLatestIncomeTradeScan(signal) {
 export function scanIncomeTrades(mode, symbol, signal) {
   return request(API_ROUTES.INCOME_TRADE_SCAN(mode, symbol), signal);
 }
+
+export function getJournalTrades(signal) {
+  return request(API_ROUTES.TRADES, signal);
+}
+
+export function saveJournalTrade(trade, id) {
+  return request(id ? API_ROUTES.TRADE(id) : API_ROUTES.TRADES, undefined, {
+    method: id ? "PUT" : "POST",
+    data: trade,
+  });
+}
+
+export function deleteJournalTrade(id) {
+  return request(API_ROUTES.TRADE(id), undefined, { method: "DELETE" });
+}
+
+export function getTradeSetupGuide(signal) {
+  return request(API_ROUTES.TRADE_SETUP_GUIDE, signal);
+}
+
+export function deliverAlert(payload) {
+  return request(API_ROUTES.ALERT_DELIVERY, undefined, {
+    method: "POST",
+    data: payload,
+  });
+}

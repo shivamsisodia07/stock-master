@@ -65,7 +65,6 @@ export default function HomePage({ navigate }) {
             <h2>Latest nightly trade scan <span className="results-count">{tradeScan?.matched || 0} matches</span></h2>
             <p>{tradeScan?.started_at ? `Scanned ${tradeScan.scanned} stocks across ${tradeScan.setups.length} setups · ${relativeTime(tradeScan.started_at)}` : "Nightly Nifty 100 income-trade collection"}</p>
           </div>
-          <button className="text-button" type="button" onClick={() => navigate("/income-trades")}>Open income trades ↗</button>
         </div>
         {tradeScanLoading && <div className="loading-banner">Loading the latest collected scans…</div>}
         {tradeScanError && <div className="error-banner" role="alert">{tradeScanError}</div>}

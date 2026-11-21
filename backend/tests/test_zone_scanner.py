@@ -78,14 +78,19 @@ class ZoneScannerTests(unittest.TestCase):
         self.assertEqual(zone["score"], 5.5)
         self.assertEqual(zone["score_breakdown"]["freshness"], 1.5)
 
-    def test_wick_only_touch_stays_fresh_without_second_leg_out(self):
+    def test_wick_only_touch_counts_as_test_without_second_leg_out(self):
         zone = next(
-            zone for zone in detect_zones(dbr_candles([candle(6, 102, 103, 100, 102)]), "daily", self.as_of)
+            zone for zone in detect_zones(dbr_candles([
+                candle(6, 102, 103, 100, 102),
+                candle(7, 102, 103, 99, 100),
+            ]), "daily", self.as_of)
             if zone["type"] == "demand" and zone["leg_out_at"] == "2024-01-03"
         )
 
-        self.assertEqual(zone["tests"], 0)
-        self.assertEqual(zone["freshness"], "fresh")
+        self.assertEqual(zone["tests"], 1)
+        self.assertEqual(zone["last_test"], "2024-01-06")
+        self.assertEqual(zone["freshness"], "tested once")
+        self.assertEqual(zone["score_breakdown"]["freshness"], 1.5)
 
     def test_wick_pullback_followed_by_second_leg_out_counts_once(self):
         later_candles = [
@@ -98,7 +103,7 @@ class ZoneScannerTests(unittest.TestCase):
         )
 
         self.assertEqual(zone["tests"], 1)
-        self.assertEqual(zone["last_test"], "2024-01-07")
+        self.assertEqual(zone["last_test"], "2024-01-06")
         self.assertEqual(zone["freshness"], "tested once")
 
     def test_two_separate_body_reentries_discard_zone(self):

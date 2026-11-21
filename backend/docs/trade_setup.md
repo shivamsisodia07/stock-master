@@ -352,8 +352,8 @@ Extra checks:
 
 ### 4.5 Freshness and lifecycle
 
-- **Fresh:** price has never returned to the zone. Highest probability.
-- **Tested once:** price touched the zone and bounced. Still tradable with lower odds.
+- **Fresh:** price has never returned to the zone. In the scanner, a later candle wick reaching across the proximal edge counts as a retest even if the body stays outside the zone.
+- **Tested once:** one distinct return across the proximal edge. Consecutive candles overlapping the zone are one visit; price must leave before another crossing counts.
 - **Weak:** touched two or more times. Each touch consumes orders, so treat it as exhausted.
 - **Invalidated:** a candle closes beyond the distal edge on the zone's own timeframe. Remove it immediately.
 - **Flipped:** a broken demand zone often becomes supply on a retest, and a broken supply zone often becomes demand. Treat flips as lower-quality, secondary zones.
@@ -667,11 +667,13 @@ Expectancy (R) = (win rate x average win in R) - (loss rate x average loss in R)
 - [ ] Is total open risk still within portfolio limits?
 
 ### Post-trade journal
+- Record each trade in the swingTrader **Trade journal**. Open trades can be logged before exit; add both the exit date and price when closing a position.
 - Screenshot of the chart with zones, entry, stop and target.
 - Setup type (HIT, DIT, WIT, MIT, QIT or YIT), zone score and trigger used.
 - Result in R and reason for exit.
 - Did you follow every rule? If not, which rule was broken?
 - Emotional state and lessons.
+- Review cumulative realized P&L and setup-level results regularly. Journal analytics exclude open positions and subtract recorded fees.
 
 ### Weekly review
 - Update zones and trend state for all watchlist stocks.

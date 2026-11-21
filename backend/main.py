@@ -1,17 +1,28 @@
 import asyncio
+import os
+import urllib.parse
+import urllib.request
+from urllib.error import HTTPError
+import json
 from pathlib import Path
+from datetime import date
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 from backend.services.market_data import get_chart_data, get_market_data, get_stock_news_and_events, import_csv_market_data
+from backend.services.trade_journal import create_trade, delete_trade, list_trades, update_trade
 from backend.services.tradesetup import SETUPS, analyze_symbol, scan_nifty100
 from backend.services.trade_scan_store import get_latest_trade_scan
 
 app = FastAPI(title="swingTrader Market Data API", version="2.0.0")
+load_dotenv(Path(__file__).resolve().parent / ".env")
 FRONTEND_DIRECTORY = Path(__file__).resolve().parent / "static"
+TRADE_SETUP_DOCUMENT = Path(__file__).resolve().parent / "docs" / "trade_setup.md"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -20,7 +31,7 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
     ],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -39,12 +50,110 @@ class CsvImportRequest(BaseModel):
     content: str
 
 
+class AlertDeliveryRequest(BaseModel):
+    telegram_enabled: bool = False
+    telegram_chat_id: str = Field(default="", max_length=100)
+    title: str = Field(default="swingTrader alert", max_length=200)
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class TradeJournalInput(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    setup: str
+    side: Literal["LONG", "SHORT"] = "LONG"
+    entry_date: date
+    exit_date: date | None = None
+    entry_price: float = Field(gt=0)
+    exit_price: float | None = Field(default=None, gt=0)
+    quantity: float = Field(gt=0)
+    stop_price: float | None = Field(default=None, gt=0)
+    target_price: float | None = Field(default=None, gt=0)
+    fees: float = Field(default=0, ge=0)
+    zone_score: int | None = Field(default=None, ge=0, le=10)
+    trigger: str = Field(default="", max_length=200)
+    exit_reason: str = Field(default="", max_length=200)
+    followed_rules: bool = True
+    emotions: str = Field(default="", max_length=1000)
+    lessons: str = Field(default="", max_length=2000)
+    screenshot_url: str = Field(default="", max_length=1000)
+    notes: str = Field(default="", max_length=4000)
+
+
 @app.post("/api/import-csv")
 async def import_csv(request: CsvImportRequest) -> dict:
     try:
         return await asyncio.to_thread(import_csv_market_data, request.content)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/api/alerts/deliver")
+async def deliver_alert(request: AlertDeliveryRequest) -> dict:
+    if not request.telegram_enabled:
+        raise HTTPException(status_code=400, detail="Telegram alerts are not enabled.")
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = request.telegram_chat_id.strip()
+    if not bot_token:
+        raise HTTPException(status_code=503, detail="TELEGRAM_BOT_TOKEN is not configured.")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram chat ID is required.")
+
+    try:
+        payload = urllib.parse.urlencode({
+            "chat_id": chat_id,
+            "text": f"{request.title}\n\n{request.message}",
+        }).encode("utf-8")
+        api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        request_object = urllib.request.Request(
+            api_url,
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            with urllib.request.urlopen(request_object, timeout=15) as response:
+                response_data = json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            response_data = json.loads(error.read().decode("utf-8"))
+            raise RuntimeError(response_data.get("description", f"Telegram HTTP {error.code}")) from error
+        if not response_data.get("ok"):
+            raise RuntimeError(response_data.get("description", "Telegram rejected the alert"))
+        return {"delivered": ["telegram"]}
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Telegram: {error}") from error
+
+
+@app.get("/api/trades")
+async def journal_trades() -> dict:
+    return {"trades": await asyncio.to_thread(list_trades)}
+
+
+@app.post("/api/trades")
+async def add_journal_trade(request: TradeJournalInput) -> dict:
+    try:
+        trade = await asyncio.to_thread(create_trade, request.model_dump(mode="json"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"trade": trade}
+
+
+@app.put("/api/trades/{trade_id}")
+async def edit_journal_trade(trade_id: str, request: TradeJournalInput) -> dict:
+    try:
+        trade = await asyncio.to_thread(update_trade, trade_id, request.model_dump(mode="json"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if trade is None:
+        raise HTTPException(status_code=404, detail="Trade not found.")
+    return {"trade": trade}
+
+
+@app.delete("/api/trades/{trade_id}")
+async def remove_journal_trade(trade_id: str) -> dict:
+    deleted = await asyncio.to_thread(delete_trade, trade_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Trade not found.")
+    return {"deleted": True}
 
 
 @app.get("/api/stocks/{symbol}/chart")
@@ -87,6 +196,13 @@ async def income_trade_scan(mode: str = Query(default="MIT"), symbol: str | None
 @app.get("/api/docs", include_in_schema=False)
 async def api_docs() -> RedirectResponse:
     return RedirectResponse(url="/docs")
+
+
+@app.get("/api/docs/trade-setup", response_class=FileResponse)
+async def trade_setup_document() -> FileResponse:
+    if not TRADE_SETUP_DOCUMENT.is_file():
+        raise HTTPException(status_code=503, detail="Trade setup guide is missing.")
+    return FileResponse(TRADE_SETUP_DOCUMENT, media_type="text/markdown")
 
 
 def _frontend_file(path: str = "") -> Path:

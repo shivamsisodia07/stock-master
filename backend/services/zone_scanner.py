@@ -116,10 +116,7 @@ def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_
         return {}
 
     tests = 0
-    was_body_inside = False
     was_wick_touching = False
-    pullback_armed = False
-    pullback_has_body_test = False
     last_test = None
     broken = False
     for candle in candles[leg_out_index + 1:]:
@@ -127,43 +124,16 @@ def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_
             if candle["close"] < distal:
                 broken = True
                 break
-            body_inside = min(candle["open"], candle["close"]) < proximal
             wick_touching = candle["low"] <= proximal
         else:
             if candle["close"] > distal:
                 broken = True
                 break
-            body_inside = max(candle["open"], candle["close"]) > proximal
             wick_touching = candle["high"] >= proximal
 
-        armed_before_candle = pullback_armed
         if wick_touching and not was_wick_touching:
-            pullback_armed = True
-            pullback_has_body_test = False
-        if body_inside and not was_body_inside:
             tests += 1
             last_test = candle["date"]
-            pullback_has_body_test = True
-
-        leaves_zone = (
-            candle["close"] > proximal
-            if zone_type == "demand"
-            else candle["close"] < proximal
-        )
-        second_leg_out = (
-            armed_before_candle
-            and _is_exciting(candle)
-            and _direction(candle) == _direction(leg_out)
-            and leaves_zone
-        )
-        if second_leg_out:
-            if not pullback_has_body_test:
-                tests += 1
-                last_test = candle["date"]
-            pullback_armed = False
-            pullback_has_body_test = False
-
-        was_body_inside = body_inside
         was_wick_touching = wick_touching
     if broken or tests >= 2:
         return {}

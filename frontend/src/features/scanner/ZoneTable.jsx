@@ -1,9 +1,10 @@
 import React from "react";
 import { money } from "../../lib/format.js";
+import { appRoutePath } from "../../lib/useAppRouter.js";
 import { tradePlanFor, zonesMeetingFilters } from "./zones.js";
 import PriceRange from "./PriceRange.jsx";
 
-export default function ZoneTable({ stocks, timeframe, filters, navigate, watched, onWatchlist, onChart, onAlert, hasAlert }) {
+export default function ZoneTable({ stocks, timeframe, filters, navigate, watched, onWatchlist, onAlert, hasAlert }) {
   const showDemand = filters.zoneType !== "supply";
   const showSupply = filters.zoneType !== "demand";
   return (
@@ -32,7 +33,7 @@ export default function ZoneTable({ stocks, timeframe, filters, navigate, watche
                 <td className={stock.change_pct < 0 ? "table-change negative" : "table-change"}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%</td>
                 <td><div className="table-actions">
                   <button className={`watch-button ${watched(stock.symbol) ? "watch-active" : ""}`} title={watched(stock.symbol) ? "Remove from watchlist" : "Add to watchlist"} onClick={() => onWatchlist(stock.symbol)}>{watched(stock.symbol) ? "★" : "☆"}</button>
-                  <button className="text-button" onClick={() => onChart(stock)}>Chart</button>
+                  <a className="text-button chart-new-tab-link" href={appRoutePath(`/charts/${encodeURIComponent(stock.symbol)}/${timeframe}`)} target="_blank" rel="noreferrer">Chart ↗</a>
                   <button className="text-button" onClick={() => navigate(`/stocks/${encodeURIComponent(stock.symbol)}`)}>Details</button>
                 </div></td>
               </tr>

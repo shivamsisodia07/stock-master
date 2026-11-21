@@ -1,6 +1,8 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import useMarketData from "../scanner/useMarketData.js";
+
+const TradeSetupDocument = lazy(() => import("./TradeSetupDocument.jsx"));
 
 const LESSONS = [
   ["foundations", "Price-action basics"],
@@ -9,6 +11,7 @@ const LESSONS = [
   ["score", "How the zone score works"],
   ["strategies", "Price-action playbooks"],
   ["trade-plan", "Building a trade plan"],
+  ["trading-setup", "Complete trading setup"],
   ["advanced", "Advanced context"],
   ["glossary", "Glossary & checklist"],
 ];
@@ -84,6 +87,7 @@ function PriceActionChart({ variant }) {
 
 export default function LearnPage({ navigate }) {
   const market = useMarketData();
+
   return (
     <WorkspaceLayout view="learn" navigate={navigate} stocks={market.stocks}>
       <header className="topbar">
@@ -95,7 +99,7 @@ export default function LearnPage({ navigate }) {
         <div className="eyebrow"><span className="eyebrow-line" />SWINGTRADER LEARNING CENTER</div>
         <h1>Understand price action, <span>step by step.</span></h1>
         <p>Learn how to read candles and market structure, identify supply and demand zones, interpret swingTrader's score, and think through a trade plan.</p>
-        <div className="learn-hero-meta"><span>FOUNDATIONS → ADVANCED</span><span>Educational material · Not investment advice</span></div>
+        <div className="learn-hero-meta"><span>FOUNDATIONS → ADVANCED</span><span>8 concise lessons + full strategy guide · Not investment advice</span></div>
         <div className="learn-header-actions">
           <a href="#foundations">Start with the basics <span aria-hidden="true">↓</span></a>
           <span>8 concise lessons · Basics to advanced</span>
@@ -145,7 +149,7 @@ export default function LearnPage({ navigate }) {
           </div>
           <div className="learn-concept-grid">
             <ConceptCard title="Retests and freshness">
-              <p>A body re-entry across the proximal line counts as a test; a wick-only touch remains fresh unless a later exciting candle leaves in the original direction after price has reached the proximal line. Separate body re-entries count separately. The scanner distinguishes fresh zones from zones tested once.</p>
+              <p>A later candle wick that reaches across the proximal line counts immediately as a test, even when its body does not enter the zone. Consecutive candles overlapping the zone are one visit; a new crossing after price leaves counts again. The scanner distinguishes fresh zones from zones tested once.</p>
             </ConceptCard>
             <ConceptCard title="What “nearby” means here">
               <p>The scanner filters candidate trade plans by entry distance from the proximal line, score, freshness, and reward/risk. Results depend on the selected timeframe and filter settings. Open a stock page to compare its daily, weekly, monthly, and quarterly context.</p>
@@ -198,6 +202,12 @@ export default function LearnPage({ navigate }) {
             <li><b>Size for a fixed risk budget.</b> Illustratively, a hypothetical ₹500 risk budget and ₹4 risk per share yields 125 shares before costs, liquidity, and gap risk. This is only arithmetic—not a recommended risk amount or position.</li>
             <li><b>Review after the trade.</b> Log the setup, rules followed, costs, and outcome. Evaluate a series of trades, not one outcome.</li>
           </ol>
+        </section>
+
+        <section className="learn-section learn-trade-setup" id="trading-setup" aria-label="Complete trading setup">
+          <Suspense fallback={<div className="loading-banner">Loading the full trading setup…</div>}>
+            <TradeSetupDocument />
+          </Suspense>
         </section>
 
         <section className="learn-section" id="advanced">

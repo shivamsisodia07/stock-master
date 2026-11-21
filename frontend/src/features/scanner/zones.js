@@ -58,7 +58,7 @@ export function zonesMeetingFilters(stock, timeframe, {
   maxDistancePct,
   minRiskReward,
   zoneType = "all",
-  freshness = "all",
+  freshness = "fresh",
 }) {
   const zones = zonesFor(stock, timeframe);
   const scoreThreshold = Math.max(MIN_ZONE_SCORE, minScore ?? MIN_ZONE_SCORE);

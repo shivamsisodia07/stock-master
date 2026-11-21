@@ -36,6 +36,59 @@ _imported_zones: dict[str, dict[str, list[dict]]] = {}
 _cache_lock = threading.Lock()
 
 
+def calculate_sma7_trend(candles: list[dict]) -> dict:
+    """Classify the 7-period SMA angle using the value 7 candles earlier."""
+    if len(candles) < 8:
+        return {"trend": "INSUFFICIENT", "cmp_position": "Unknown", "action": "WAIT", "sma7": None}
+
+    closes = [float(candle["close"]) for candle in candles]
+    sma_values = []
+    for index in range(6, len(closes)):
+        sma_values.append(sum(closes[index - 6:index + 1]) / 7)
+
+    if len(sma_values) < 2:
+        return {"trend": "INSUFFICIENT", "cmp_position": "Unknown", "action": "WAIT", "sma7": round(sma_values[-1], 2)}
+
+    current_sma = sma_values[-1]
+    previous_index = len(sma_values) - 8
+    previous_sma = sma_values[previous_index] if previous_index >= 0 else sma_values[0]
+    tolerance = max(current_sma * 0.001, 0.01)
+    if current_sma > previous_sma + tolerance:
+        trend = "UPTREND"
+    elif current_sma < previous_sma - tolerance:
+        trend = "DOWNTREND"
+    else:
+        trend = "SIDEWAYS"
+
+    recent = closes[-20:] if len(closes) >= 20 else closes
+    low = min(recent)
+    high = max(recent)
+    span = high - low
+    cmp = closes[-1]
+    if span <= 0:
+        cmp_position = "Equilibrium"
+    elif cmp <= low + span * 0.25:
+        cmp_position = "Very low" if cmp <= low + span * 0.12 else "Low"
+    elif cmp >= high - span * 0.25:
+        cmp_position = "Very high" if cmp >= high - span * 0.12 else "High"
+    else:
+        cmp_position = "Equilibrium"
+
+    if cmp_position in ("Low", "Very low"):
+        action = "DEFINITELY BUY" if cmp_position == "Very low" else "BUY"
+    elif cmp_position in ("High", "Very high"):
+        action = "DEFINITELY SELL" if cmp_position == "Very high" else "SELL"
+    else:
+        action = "GO WITH THE TREND"
+
+    return {
+        "trend": trend,
+        "cmp_position": cmp_position,
+        "action": action,
+        "sma7": round(current_sma, 2),
+    }
+
+
 def _column_for_ticker(frame, ticker: str, field: str):
     expected = field.lower()
     if getattr(frame.columns, "nlevels", 1) == 1:
@@ -300,6 +353,10 @@ def _build_market_data(
         current_price = quote["price"]
         last_close = daily[-1]["close"]
         timeframe_zones = zones_source.get(symbol, {})
+        trends = {
+            timeframe: calculate_sma7_trend(stock_history.get(timeframe, []))
+            for timeframe in TIMEFRAMES
+        }
         daily_zones = timeframe_zones.get("daily", {"demand": [], "supply": []})
         demand = _nearest_by_timeframe(daily_zones, last_close, "demand", max_distance=3)
         supply = _nearest_by_timeframe(daily_zones, last_close, "supply", max_distance=3)
@@ -325,6 +382,7 @@ def _build_market_data(
             "monthly_supply": _nearest_by_timeframe(monthly, last_close, "supply"),
             "quarterly_demand": _nearest_by_timeframe(quarterly, last_close, "demand"),
             "quarterly_supply": _nearest_by_timeframe(quarterly, last_close, "supply"),
+            "trends": trends,
             "has_nearby_zone": demand is not None or supply is not None,
         })
 
@@ -451,17 +509,24 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
     normalized_symbol = symbol.upper().removesuffix(".NS")
     if normalized_symbol in _imported_history:
         history = _imported_history[normalized_symbol]
+        current_price = history.get("daily", [{}])[-1].get("close", 0)
         zones_by_timeframe = _nearest_chart_zones(
             _imported_zones.get(normalized_symbol, {}),
-            history.get("daily", [{}])[-1].get("close", 0),
+            current_price,
         )
         selected_zones = zones_by_timeframe.get(timeframe, [])
+        trends = {
+            zone_timeframe: calculate_sma7_trend(history.get(zone_timeframe, []))
+            for zone_timeframe in TIMEFRAMES
+        }
         return {
             "symbol": normalized_symbol,
             "timeframe": timeframe,
+            "current_price": current_price,
             "candles": history.get(timeframe, []),
             "zones": _zones_by_type(selected_zones),
             "zones_by_timeframe": zones_by_timeframe,
+            "trends": trends,
             "updated_at": None,
         }
     candles_by_timeframe = _history_by_symbol.get(normalized_symbol)
@@ -477,12 +542,18 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         price,
     )
     selected_zones = zones_by_timeframe.get(timeframe, [])
+    trends = {
+        zone_timeframe: calculate_sma7_trend(candles_by_timeframe.get(zone_timeframe, []))
+        for zone_timeframe in TIMEFRAMES
+    }
     return {
         "symbol": normalized_symbol,
         "timeframe": timeframe,
+        "current_price": price,
         "candles": candles_by_timeframe.get(timeframe, []),
         "zones": _zones_by_type(selected_zones),
         "zones_by_timeframe": zones_by_timeframe,
+        "trends": trends,
         "updated_at": _history_cache_updated_at.isoformat() if _history_cache_updated_at else None,
     }
 

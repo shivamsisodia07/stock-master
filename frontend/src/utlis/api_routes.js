@@ -6,4 +6,8 @@ export const API_ROUTES = {
   INCOME_TRADE_MODES: "/api/income-trades/modes",
   INCOME_TRADE_LATEST: "/api/income-trades/latest",
   INCOME_TRADE_SCAN: (mode, symbol) => `/api/income-trades/scan?mode=${encodeURIComponent(mode)}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ""}`,
+  TRADES: "/api/trades",
+  TRADE: (id) => `/api/trades/${encodeURIComponent(id)}`,
+  TRADE_SETUP_GUIDE: "/api/docs/trade-setup",
+  ALERT_DELIVERY: "/api/alerts/deliver",
 };

@@ -4,6 +4,7 @@ import { money, relativeTime } from "../../lib/format.js";
 import useMarketData from "../scanner/useMarketData.js";
 import useAlerts from "./useAlerts.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
+import { deliverAlert } from "../../lib/api.js";
 
 function alertRange(rule) {
   return `${money(Math.min(rule.distal, rule.proximal))}–${money(Math.max(rule.distal, rule.proximal))}`;
@@ -14,6 +15,31 @@ export default function AlertsPage({ navigate }) {
   const watchlist = useWatchlist();
   const alerts = useAlerts(market.stocks, !market.loading && !market.error);
   const [notice, setNotice] = useState("");
+  const [telegramEnabled, setTelegramEnabled] = useState(alerts.delivery.telegram_enabled);
+  const [telegramChatId, setTelegramChatId] = useState(alerts.delivery.telegram_chat_id);
+
+  async function saveDelivery() {
+    const delivery = {
+      telegram_enabled: telegramEnabled,
+      telegram_chat_id: telegramChatId.trim(),
+    };
+    alerts.saveDelivery(delivery);
+    setNotice("Telegram alert settings saved.");
+  }
+
+  async function testDelivery() {
+    try {
+      await deliverAlert({
+        telegram_enabled: telegramEnabled,
+        telegram_chat_id: telegramChatId.trim(),
+        title: "swingTrader test alert",
+        message: "This is a test alert from swingTrader.",
+      });
+      setNotice("Test alert delivered successfully.");
+    } catch (error) {
+      setNotice(error.message || "Unable to deliver the test alert.");
+    }
+  }
 
   async function enableNotifications() {
     const result = await alerts.enableNotifications();
@@ -51,6 +77,23 @@ export default function AlertsPage({ navigate }) {
 
       {market.error && <div className="error-banner" role="alert">{market.error}</div>}
       {notice && <p className="notification-note alerts-notice" role="status">{notice}</p>}
+
+      <section className="alerts-delivery-panel" aria-labelledby="alert-delivery-title">
+        <div className="alerts-section-heading">
+          <div><h2 id="alert-delivery-title">Telegram delivery</h2><p>Send triggered zone alerts to your Telegram chat. The bot token is loaded from the server environment.</p></div>
+        </div>
+        <div className="alerts-delivery-grid telegram-only">
+          <label className="alert-channel-card">
+            <div><input type="checkbox" checked={telegramEnabled} onChange={(event) => setTelegramEnabled(event.target.checked)} /><strong>Telegram</strong></div>
+            <span>Chat or group ID</span>
+            <input value={telegramChatId} onChange={(event) => setTelegramChatId(event.target.value)} placeholder="-1001234567890" />
+          </label>
+        </div>
+        <div className="alerts-delivery-actions">
+          <button className="secondary-button" type="button" onClick={saveDelivery}>Save delivery settings</button>
+          <button className="primary-button" type="button" onClick={testDelivery}>Send test alert</button>
+        </div>
+      </section>
 
       <section className="alerts-panel">
         <div className="alerts-section-heading">

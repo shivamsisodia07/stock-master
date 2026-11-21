@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { usePersistentArray } from "../../lib/storage.js";
+import { deliverAlert } from "../../lib/api.js";
 
 function isInsideZone(price, zone) {
   if (!zone) return false;
@@ -13,6 +14,11 @@ function alertId(stock, zone) {
 export default function useAlerts(stocks, enabled = true) {
   const [rules, setRules] = usePersistentArray("pivot-zone-alerts");
   const [history, setHistory] = usePersistentArray("pivot-alert-history");
+  const [deliveryRows, setDeliveryRows] = usePersistentArray("pivot-alert-delivery");
+  const delivery = deliveryRows[0] || {
+    telegram_enabled: false,
+    telegram_chat_id: "",
+  };
   const previousPrices = useRef(new Map());
 
   const toggleRule = useCallback((stock, zone) => {
@@ -68,11 +74,18 @@ export default function useAlerts(stocks, enabled = true) {
             body: `Price ${price.toFixed(2)} · Zone ${Math.min(rule.distal, rule.proximal).toFixed(2)}–${Math.max(rule.distal, rule.proximal).toFixed(2)}`,
           });
         }
+        if (delivery.telegram_enabled) {
+          deliverAlert({
+            ...delivery,
+            title: `${stock.symbol} zone alert`,
+            message: `${stock.symbol} entered ${rule.type} zone at ${price.toFixed(2)}. Zone: ${Math.min(rule.distal, rule.proximal).toFixed(2)}-${Math.max(rule.distal, rule.proximal).toFixed(2)}.`,
+          }).catch((error) => console.warn("Unable to deliver external alert.", error));
+        }
       }
     }
     for (const stock of stocks) previousPrices.current.set(stock.symbol, stock.price);
     if (newEvents.length) setHistory((current) => [...newEvents, ...current].slice(0, 100));
-  }, [stocks, rules, setHistory, enabled]);
+  }, [stocks, rules, setHistory, enabled, delivery.telegram_enabled, delivery.telegram_chat_id]);
 
   return {
     rules,
@@ -81,6 +94,8 @@ export default function useAlerts(stocks, enabled = true) {
     removeRule,
     clearHistory,
     enableNotifications,
+    delivery,
+    saveDelivery: (value) => setDeliveryRows([value]),
     hasRule: (stock, zone) => rules.some((rule) => rule.id === alertId(stock, zone)),
   };
 }

@@ -1,5 +1,6 @@
 import React from "react";
 import { money } from "../../lib/format.js";
+import { appRoutePath } from "../../lib/useAppRouter.js";
 import { tradePlanFor, zonesMeetingFilters } from "./zones.js";
 import PriceRange from "./PriceRange.jsx";
 
@@ -9,7 +10,7 @@ const SCORE_COMPONENTS = [
   ["base_candles", "Base length", (points) => points === 2 ? "1–3 candles" : points === 1 ? "4–5 candles" : "No base or 6+ candles"],
 ];
 
-export default function ZoneCard({ stock, timeframe, minScore, maxDistancePct, minRiskReward, zoneType, zoneFreshness, watched, onWatchlist, onChart, navigate }) {
+export default function ZoneCard({ stock, timeframe, minScore, maxDistancePct, minRiskReward, zoneType, zoneFreshness, watched, onWatchlist, onAlert, hasAlert, navigate }) {
   const zones = zonesMeetingFilters(stock, timeframe, { minScore, maxDistancePct, minRiskReward, zoneType, freshness: zoneFreshness });
   const primaryZone = [zones.demand, zones.supply]
     .filter(Boolean)
@@ -29,7 +30,7 @@ export default function ZoneCard({ stock, timeframe, minScore, maxDistancePct, m
         </div>
         <div className="card-actions">
           <button className={`watch-button ${watched ? "watch-active" : ""}`} title={watched ? "Remove from watchlist" : "Add to watchlist"} onClick={() => onWatchlist(stock.symbol)}>{watched ? "★" : "☆"}</button>
-          <button className="text-button full-chart-button" onClick={() => onChart(stock, timeframe, minScore)}>Full chart ↗</button>
+          <a className="text-button full-chart-button chart-new-tab-link" href={appRoutePath(`/charts/${encodeURIComponent(stock.symbol)}/${timeframe}`)} target="_blank" rel="noreferrer">Full chart ↗</a>
           <span className="score-badge">{primaryZone ? `${primaryZone.score}/7` : "No zone"}</span>
         </div>
       </div>
@@ -40,6 +41,13 @@ export default function ZoneCard({ stock, timeframe, minScore, maxDistancePct, m
         <span className={`zone-freshness-pill ${primaryZone.freshness === "fresh" ? "fresh-pill" : "tested-pill"}`}>{primaryZone.freshness}</span>
       </div>}
       <PriceRange stock={stock} zone={primaryZone} plan={primaryPlan} />
+      <div className="zone-card-alerts" aria-label="Zone alerts">
+        <span>ZONE ALERTS</span>
+        {[zones.demand, zones.supply].filter(Boolean).map((zone) => {
+          const active = hasAlert(stock, zone);
+          return <button className={`table-alert ${active ? "alert-active" : ""}`} type="button" key={zone.id || zone.type} aria-pressed={active} aria-label={`${active ? "Remove" : "Add"} ${zone.type} alert for ${stock.symbol}`} onClick={() => onAlert(stock, zone)}>{active ? `${zone.type} alert on` : `Alert ${zone.type}`}</button>;
+        })}
+      </div>
       {primaryZone && <details className="zone-more-info">
         <summary>More info</summary>
         <section className="score-reasons" aria-label="Score breakdown">

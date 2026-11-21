@@ -46,11 +46,13 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
   const volumeSeriesRef = useRef(null);
   const sma20SeriesRef = useRef(null);
   const sma50SeriesRef = useRef(null);
+  const sma7SeriesRef = useRef(null);
   const emaSeriesRefs = useRef({});
   const [hoveredCandle, setHoveredCandle] = useState(null);
   const [showVolume, setShowVolume] = useState(true);
   const [showSma20, setShowSma20] = useState(false);
   const [showSma50, setShowSma50] = useState(false);
+  const [showSma7, setShowSma7] = useState(true);
   const [showEma9, setShowEma9] = useState(false);
   const [showEma20, setShowEma20] = useState(false);
   const [showEma50, setShowEma50] = useState(false);
@@ -140,6 +142,20 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
       sma50SeriesRef.current = smaSeries;
     }
 
+    const sma7 = movingAverageData(candles, 7);
+    if (sma7.length) {
+      const smaSeries = chart.addSeries(LineSeries, {
+        color: "#57d6a0",
+        lineWidth: 2,
+        title: "SMA 7",
+        visible: showSma7,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      smaSeries.setData(sma7);
+      sma7SeriesRef.current = smaSeries;
+    }
+
     emaSeriesRefs.current = {};
     const emaConfigs = [
       [9, "#f5c451", showEma9],
@@ -166,7 +182,8 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
       const zone = timeframeZones?.[0];
       if (!zone) continue;
       const color = zone.type === "demand" ? "#57d6a0" : "#fa7f87";
-      const title = `${TIMEFRAME_LABELS[timeframe] || timeframe} ${zone.type}`;
+      const score = Number.isFinite(zone.score) ? `${zone.score}/${zone.max_score || 7}` : "";
+      const title = `${TIMEFRAME_LABELS[timeframe] || timeframe} ${zone.type}${score ? ` ${score}` : ""}`;
       zoneLines.push({ timeframe, line: series.createPriceLine({
         price: zone.proximal,
         color,
@@ -250,6 +267,7 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
       volumeSeriesRef.current = null;
       sma20SeriesRef.current = null;
       sma50SeriesRef.current = null;
+      sma7SeriesRef.current = null;
       emaSeriesRefs.current = {};
     };
   }, [candles, zonesByTimeframe, selectedTimeframe]);
@@ -276,6 +294,10 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
   useEffect(() => {
     sma50SeriesRef.current?.applyOptions({ visible: showSma50 });
   }, [showSma50]);
+
+  useEffect(() => {
+    sma7SeriesRef.current?.applyOptions({ visible: showSma7 });
+  }, [showSma7]);
 
   useEffect(() => {
     emaSeriesRefs.current[9]?.applyOptions({ visible: showEma9 });
@@ -309,6 +331,7 @@ export default function PriceChart({ candles, zonesByTimeframe, currentPrice, se
             return <button key={timeframe} className={`chart-toggle ${selected ? "active" : ""}`} aria-label={`${selected ? "Hide" : "Show"} ${label.toLowerCase()} zone`} aria-pressed={selected} onClick={() => setVisibleTimeframes((current) => selected ? current.filter((value) => value !== timeframe) : [...current, timeframe])}>{label}</button>;
           })}
           <button className={`chart-toggle ${showVolume ? "active" : ""}`} aria-pressed={showVolume} onClick={() => setShowVolume((visible) => !visible)}>Volume</button>
+          <button className={`chart-toggle trend-sma-toggle ${showSma7 ? "active" : ""}`} aria-pressed={showSma7} onClick={() => setShowSma7((visible) => !visible)}>SMA 7</button>
           <button className={`chart-toggle ${showSma20 ? "active" : ""}`} aria-pressed={showSma20} onClick={() => setShowSma20((visible) => !visible)}>SMA 20</button>
           <button className={`chart-toggle ${showSma50 ? "active" : ""}`} aria-pressed={showSma50} onClick={() => setShowSma50((visible) => !visible)}>SMA 50</button>
           <button className={`chart-toggle ema-9-toggle ${showEma9 ? "active" : ""}`} aria-pressed={showEma9} onClick={() => setShowEma9((visible) => !visible)}>EMA 9</button>
