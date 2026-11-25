@@ -8,6 +8,7 @@ import useAlerts from "../alerts/useAlerts.js";
 import useMarketData from "../scanner/useMarketData.js";
 import { TIMEFRAMES, tradePlanFor, zonesFor } from "../scanner/zones.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
+import TradingViewWidget from "../../components/TradingViewWidget.jsx";
 
 function StockNews({ symbol }) {
   const [feed, setFeed] = useState(null);
@@ -99,6 +100,7 @@ export default function StockPage({ navigate, symbol }) {
           <article><span>LAST DAILY CANDLE</span><strong>{stock.latest_candle_date}</strong><small>Yahoo Finance · NSE</small></article>
         </section>
 
+        
         <section className="stock-trades-section">
           <div className="stock-section-heading"><div><h2>Trade plans by timeframe</h2><p>All available demand and supply zone setups; levels are mechanical references, not recommendations.</p></div><span>{TIMEFRAMES.length} timeframes</span></div>
           <div className="stock-trades-grid">
@@ -142,6 +144,23 @@ export default function StockPage({ navigate, symbol }) {
           </div>
         </section>
 
+
+        <section className="stock-tradingview-section" aria-label="TradingView stock research">
+           <article className="tradingview-panel tradingview-profile-panel">
+              <h3>Company profile</h3>
+              <TradingViewWidget type="profile" symbol={stock.symbol} />
+            </article>
+          <div className="stock-tradingview-grid">
+            <article className="tradingview-panel">
+              <h3>Technical analysis</h3>
+              <TradingViewWidget type="technical" symbol={stock.symbol} />
+            </article>
+            <article className="tradingview-panel">
+              <h3>Fundamental analysis</h3>
+              <TradingViewWidget type="fundamentals" symbol={stock.symbol} />
+            </article>
+          </div>
+        </section>
         <section className="stock-news-section"><StockNews symbol={stock.symbol} /></section>
       </>}
     </WorkspaceLayout>

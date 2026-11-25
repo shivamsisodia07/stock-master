@@ -15,8 +15,9 @@ from backend.services.zone_scanner import MIN_ZONE_SCORE, TIMEFRAMES, detect_zon
 
 logger = logging.getLogger(__name__)
 NSE_TIMEZONE = ZoneInfo("Asia/Kolkata")
-CACHE_SECONDS = 60
+CACHE_SECONDS = 5 * 60
 HISTORY_CACHE_SECONDS = 15 * 60
+MIN_CHART_ZONE_SCORE = 6
 BATCH_SIZE = 20
 INTERVALS = {
     "daily": ("2y", "1d"),
@@ -237,26 +238,28 @@ def _nearest_by_timeframe(zones: dict[str, list[dict]], price: float, zone_type:
     return nearest_zone(qualifying_zones, price, zone_type, max_distance_pct=max_distance)
 
 
-def _nearest_chart_zones(zones_by_timeframe: dict, price: float) -> dict:
-    nearest = {}
+def _qualifying_chart_zones(zones_by_timeframe: dict, price: float) -> dict:
+    qualifying = {}
     for timeframe in TIMEFRAMES:
         timeframe_zones = zones_by_timeframe.get(timeframe, {})
         candidates = [
             zone
             for zone_type in ("demand", "supply")
-            if (zone := _nearest_by_timeframe(timeframe_zones, price, zone_type))
+            for zone in timeframe_zones.get(zone_type, [])
+            if zone.get("score", 0) >= MIN_CHART_ZONE_SCORE
         ]
-        if candidates:
-            def distance_to_zone(zone: dict) -> float:
-                low = min(zone["proximal"], zone["distal"])
-                high = max(zone["proximal"], zone["distal"])
-                distance = max(low - price, 0, price - high)
-                return distance / max(price, 1)
 
-            nearest[timeframe] = [min(candidates, key=lambda zone: (distance_to_zone(zone), -zone["score"]))]
-        else:
-            nearest[timeframe] = []
-    return nearest
+        def distance_to_zone(zone: dict) -> float:
+            low = min(zone["proximal"], zone["distal"])
+            high = max(zone["proximal"], zone["distal"])
+            distance = max(low - price, 0, price - high)
+            return distance / max(price, 1)
+
+        qualifying[timeframe] = sorted(
+            candidates,
+            key=lambda zone: (distance_to_zone(zone), -zone["score"]),
+        )
+    return qualifying
 
 
 def _zones_by_type(zones: list[dict]) -> dict[str, list[dict]]:
@@ -510,7 +513,7 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
     if normalized_symbol in _imported_history:
         history = _imported_history[normalized_symbol]
         current_price = history.get("daily", [{}])[-1].get("close", 0)
-        zones_by_timeframe = _nearest_chart_zones(
+        zones_by_timeframe = _qualifying_chart_zones(
             _imported_zones.get(normalized_symbol, {}),
             current_price,
         )
@@ -537,7 +540,7 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         "price",
         daily[-1]["close"] if daily else 0,
     )
-    zones_by_timeframe = _nearest_chart_zones(
+    zones_by_timeframe = _qualifying_chart_zones(
         _zones_by_symbol.get(normalized_symbol, {}),
         price,
     )

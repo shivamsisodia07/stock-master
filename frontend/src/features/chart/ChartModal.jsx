@@ -48,11 +48,13 @@ export default function ChartModal({ stock, initialTimeframe = "monthly", onClos
   useEffect(() => {
     if (!stock) return undefined;
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (fullPage) setFullPage(false);
+      else onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [stock, onClose]);
+  }, [stock, onClose, fullPage]);
 
   if (!stock) return null;
   function saveNote() {
@@ -76,14 +78,25 @@ export default function ChartModal({ stock, initialTimeframe = "monthly", onClos
             <div className="chart-timeframes" role="tablist" aria-label="Chart timeframe">
               {TIMEFRAMES.map(([item, label]) => <button key={item} role="tab" aria-selected={timeframe === item} className={timeframe === item ? "active" : ""} onClick={() => setTimeframe(item)}>{label}</button>)}
             </div>
-            <button className="chart-expand-button" aria-label={fullPage ? "Exit full page chart" : "Expand chart to full page"} aria-pressed={fullPage} onClick={() => setFullPage((expanded) => !expanded)}>{fullPage ? "↙" : "⛶"}</button>
             <button className="dialog-close" aria-label="Close chart" onClick={onClose}>×</button>
           </div>
         </header>
-        <div className="chart-legend"><span><i className="demand-swatch" /> Demand zone</span><span><i className="supply-swatch" /> Supply zone</span><span><i className="current-swatch" /> Current price</span><span>Nearest zone per timeframe · score 5/7+ · {chart?.candles?.length || 0} candles · {timeframe}</span></div>
+        <div className="chart-legend"><span><i className="demand-swatch" /> Demand zone</span><span><i className="supply-swatch" /> Supply zone</span><span><i className="current-swatch" /> Current price</span><span>All zones scoring 6/7+ · {chart?.candles?.length || 0} candles · {timeframe}</span></div>
         {loading && <div className="chart-loading">Loading {timeframe} chart…</div>}
         {error && <div className="error-banner" role="alert">{error}</div>}
-        {chart && !loading && <PriceChart candles={chart.candles} zonesByTimeframe={chart.zones_by_timeframe} currentPrice={stock.price} selectedTimeframe={timeframe} />}
+        {chart && !loading && (
+          <PriceChart
+            key={`${stock.symbol}-${timeframe}`}
+            candles={chart.candles}
+            zonesByTimeframe={chart.zones_by_timeframe}
+            currentPrice={stock.price}
+            selectedTimeframe={timeframe}
+            symbol={stock.symbol}
+            fullScreen={fullPage}
+            fullscreenInModal
+            onToggleFullScreen={() => setFullPage((expanded) => !expanded)}
+          />
+        )}
         <section className="chart-notes" aria-labelledby="chart-notes-title">
           <div className="chart-notes-heading">
             <div><h3 id="chart-notes-title">Chart notes</h3><p>Private notes saved in this browser for {stock.symbol}.</p></div>

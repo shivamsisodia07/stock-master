@@ -92,13 +92,22 @@ def _completed_candles(candles: list[dict], timeframe: str, now: datetime) -> li
 def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_index: int, timeframe: str, pattern: str, zone_type: str, base_indices: list[int]) -> dict:
     leg_in = candles[leg_in_index]
     leg_out = candles[leg_out_index]
+    if pattern == "DBR" and leg_out["close"] <= leg_in["high"]:
+        return {}
+    if pattern == "RBD" and leg_out["close"] >= leg_in["low"]:
+        return {}
+
     base = [candles[index] for index in base_indices]
     if zone_type == "demand":
         proximal = max(max(item["open"], item["close"]) for item in base)
-        distal = min(item["low"] for item in base)
+        distal = min(min(item["low"] for item in base), leg_out["low"])
+        if pattern == "DBR":
+            distal = min(distal, leg_in["low"])
     else:
         proximal = min(min(item["open"], item["close"]) for item in base)
-        distal = max(item["high"] for item in base)
+        distal = max(max(item["high"] for item in base), leg_out["high"])
+        if pattern == "RBD":
+            distal = max(distal, leg_in["high"])
     if proximal <= 0 or distal <= 0 or proximal == distal:
         return {}
     if zone_type == "demand" and distal > proximal:

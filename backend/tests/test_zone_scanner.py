@@ -28,7 +28,7 @@ def dbr_candles(after_zone=None):
 
 
 def demand_setup(base_count=1, tested_once=False):
-    candles = [candle(1, 200, 260, 0, 50)]
+    candles = [candle(1, 200, 260, 90, 100)]
     candles.extend(
         candle(day, 100, 150, 80, 120)
         for day in range(2, base_count + 2)
@@ -177,6 +177,140 @@ class ZoneScannerTests(unittest.TestCase):
         self.assertEqual(zone["pattern"], "RBD")
         self.assertEqual(zone["proximal"], 109)
         self.assertEqual(zone["distal"], 113)
+
+    def test_dbr_requires_leg_out_close_above_leg_in_high(self):
+        setup = [
+            candle(1, 109, 111, 99, 100),
+            candle(2, 100, 103, 97, 101),
+            candle(3, 101, 112, 100, 108),
+            candle(4, 108, 115, 107, 113),
+        ]
+
+        zones = detect_zones(setup, "daily", self.as_of)
+
+        self.assertFalse(any(
+            zone["pattern"] == "DBR" and zone["leg_out_at"] == "2024-01-03"
+            for zone in zones
+        ))
+
+    def test_rbd_requires_leg_out_close_below_leg_in_low(self):
+        setup = [
+            candle(1, 100, 111, 99, 110),
+            candle(2, 109, 113, 106, 110),
+            candle(3, 110, 111, 98, 102),
+            candle(4, 101, 103, 94, 95),
+        ]
+
+        zones = detect_zones(setup, "daily", self.as_of)
+
+        self.assertFalse(any(
+            zone["pattern"] == "RBD" and zone["leg_out_at"] == "2024-01-03"
+            for zone in zones
+        ))
+
+    def test_leg_in_or_out_wicks_extend_zone_distal(self):
+        setups = [
+            (
+                "demand leg-in wick",
+                [
+                    candle(1, 109, 111, 95, 100),
+                    candle(2, 100, 103, 97, 101),
+                    candle(3, 101, 115, 100, 113),
+                ],
+                "DBR",
+                95,
+            ),
+            (
+                "demand leg-out wick",
+                [
+                    candle(1, 109, 111, 99, 100),
+                    candle(2, 100, 103, 97, 101),
+                    candle(3, 101, 125, 94, 120),
+                ],
+                "DBR",
+                94,
+            ),
+            (
+                "supply leg-in wick",
+                [
+                    candle(1, 100, 115, 99, 110),
+                    candle(2, 109, 113, 106, 110),
+                    candle(3, 110, 111, 96, 98),
+                ],
+                "RBD",
+                115,
+            ),
+            (
+                "supply leg-out wick",
+                [
+                    candle(1, 100, 111, 99, 110),
+                    candle(2, 109, 113, 106, 110),
+                    candle(3, 120, 125, 90, 98),
+                ],
+                "RBD",
+                125,
+            ),
+        ]
+
+        for label, setup, pattern, expected_distal in setups:
+            with self.subTest(label=label):
+                zone = next(
+                    zone for zone in detect_zones(setup, "daily", self.as_of)
+                    if zone["pattern"] == pattern
+                )
+                self.assertEqual(zone["distal"], expected_distal)
+
+    def test_rbr_and_dbd_use_base_and_leg_out_but_not_leg_in_wick(self):
+        setups = [
+            (
+                "RBR leg-in wick",
+                [
+                    candle(1, 100, 111, 95, 110),
+                    candle(2, 100, 103, 98, 101),
+                    candle(3, 102, 117, 101, 115),
+                ],
+                "RBR",
+                98,
+            ),
+            (
+                "RBR leg-out wick",
+                [
+                    candle(1, 100, 111, 95, 110),
+                    candle(2, 100, 103, 98, 101),
+                    candle(3, 102, 132, 90, 130),
+                ],
+                "RBR",
+                90,
+            ),
+            (
+                "DBD leg-in wick",
+                [
+                    candle(1, 110, 115, 99, 100),
+                    candle(2, 109, 113, 106, 110),
+                    candle(3, 110, 111, 95, 98),
+                ],
+                "DBD",
+                113,
+            ),
+            (
+                "DBD leg-out wick",
+                [
+                    candle(1, 110, 111, 99, 100),
+                    candle(2, 109, 113, 106, 110),
+                    candle(3, 120, 125, 90, 98),
+                ],
+                "DBD",
+                125,
+            ),
+        ]
+
+        for label, setup, pattern, expected_distal in setups:
+            with self.subTest(label=label):
+                zone = next(
+                    zone for zone in detect_zones(setup, "daily", self.as_of)
+                    if zone["pattern"] == pattern
+                )
+                self.assertEqual(zone["distal"], expected_distal)
 
     def test_supply_body_entry_counts_as_test(self):
         supply = [

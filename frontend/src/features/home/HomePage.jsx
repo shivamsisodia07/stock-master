@@ -5,6 +5,7 @@ import useWatchlist from "../watchlist/useWatchlist.js";
 import useAlerts from "../alerts/useAlerts.js";
 import { relativeTime } from "../../lib/format.js";
 import { getLatestIncomeTradeScan } from "../../lib/api.js";
+import TradingViewWidget from "../../components/TradingViewWidget.jsx";
 
 export default function HomePage({ navigate }) {
   const market = useMarketData();
@@ -57,6 +58,16 @@ export default function HomePage({ navigate }) {
         <article className="home-summary-card"><span>STOCKS IN UNIVERSE</span><strong>{market.loading ? "…" : market.stocks.length}</strong><small>Nifty 100 market coverage</small></article>
         <article className="home-summary-card"><span>WATCHLIST</span><strong>{watchlist.symbols.length}</strong><small>Stocks saved on this device</small></article>
         <article className="home-summary-card"><span>ACTIVE ALERTS</span><strong>{alerts.rules.length}</strong><small>Zone-entry rules on this device</small></article>
+      </section>
+
+      <section className="home-market-heatmap" aria-labelledby="nifty-heatmap-title">
+        <div className="stock-section-heading">
+          <div><h2 id="nifty-heatmap-title">NIFTY 500 heatmap</h2><p>Market-cap weighted view of Indian stocks and sector performance.</p></div>
+          <a href="https://www.tradingview.com/heatmap/stock/" target="_blank" rel="noreferrer">TradingView ↗</a>
+        </div>
+        <div className="tradingview-panel">
+          <TradingViewWidget type="heatmap" />
+        </div>
       </section>
 
       <section className="income-results home-trade-results" aria-label="Latest nightly trade scan">

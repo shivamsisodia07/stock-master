@@ -41,6 +41,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   const [notes, setNotes] = usePersistentArray("pivot-chart-notes");
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
+  const [chartFullscreen, setChartFullscreen] = useState(false);
   const savedNote = notes.find((note) => note.symbol === chartSymbol);
   const stock = market.stocks.find((item) => item.symbol.toLowerCase() === chartSymbol.toLowerCase());
   const displayName = stock?.name || chartSymbol.toUpperCase();
@@ -70,6 +71,15 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
     setNoteMessage("");
   }, [chartSymbol]);
 
+  useEffect(() => {
+    if (!chartFullscreen) return undefined;
+    const exitOnEscape = (event) => {
+      if (event.key === "Escape") setChartFullscreen(false);
+    };
+    window.addEventListener("keydown", exitOnEscape);
+    return () => window.removeEventListener("keydown", exitOnEscape);
+  }, [chartFullscreen]);
+
   function saveNote() {
     const text = noteText.trim();
     setNotes((current) => [
@@ -94,7 +104,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />MULTI-TIMEFRAME · NSE</div>
           <h1>{displayName}{stock && <span> {chartSymbol.toUpperCase()}</span>}</h1>
-          <p className="page-subtitle">Candles, zone boundaries, and quality scores in a dedicated chart view.</p>
+          <p className="page-subtitle">Interactive price charts with technical indicators, drawing tools, and multi-timeframe zones.</p>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate(`/stocks/${encodeURIComponent(chartSymbol)}`)}>Stock details ↗</button>
       </section>
@@ -116,7 +126,16 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
           <span>{chart.candles.length} candles · {TIMEFRAME_LABELS[timeframe]}</span>
         </div>
 
-        <PriceChart key={`${chartSymbol}-${timeframe}`} candles={chart.candles} zonesByTimeframe={chart.zones_by_timeframe} currentPrice={chart.current_price} selectedTimeframe={timeframe} />
+        <PriceChart
+          key={`${chartSymbol}-${timeframe}`}
+          candles={chart.candles}
+          zonesByTimeframe={chart.zones_by_timeframe}
+          currentPrice={chart.current_price}
+          selectedTimeframe={timeframe}
+          symbol={chartSymbol}
+          fullScreen={chartFullscreen}
+          onToggleFullScreen={() => setChartFullscreen((expanded) => !expanded)}
+        />
 
         <section className="chart-trends" aria-label="Trend by timeframe">
           <div className="chart-page-section-heading">
@@ -138,7 +157,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
 
         <section className="chart-page-zones" aria-label="Chart zone scores">
           <div className="chart-page-section-heading">
-            <div><h2>Zones and scores</h2><p>Nearest qualifying zone per timeframe. Scores are out of 7.</p></div>
+            <div><h2>Zones and scores</h2><p>All zones scoring 6/7 or higher, ordered nearest-first. Scores are out of 7.</p></div>
           </div>
           {zoneEntries.length ? (
             <div className="chart-zone-score-grid">

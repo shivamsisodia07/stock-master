@@ -1,13 +1,15 @@
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
+import backend.services.market_data as market_data
 from backend.services.csv_import import parse_ohlc_csv
 from backend.services.market_data import (
     _calendar_events,
-    _nearest_chart_zones,
+    _qualifying_chart_zones,
     _news_item,
     get_chart_data,
+    get_market_data,
     import_csv_market_data,
 )
 
@@ -22,6 +24,28 @@ def csv_for_days(count: int = 30) -> str:
 
 
 class CsvImportTests(unittest.TestCase):
+    def test_market_data_response_cache_expires_after_five_minutes(self):
+        with (
+            patch("backend.services.market_data._cache", None),
+            patch("backend.services.market_data._cache_updated_at", None),
+            patch("backend.services.market_data._history_cache_updated_at", None),
+            patch("backend.services.market_data.get_universe", return_value=([], {})),
+            patch("backend.services.market_data._refresh_history"),
+            patch("backend.services.market_data._refresh_quotes"),
+            patch(
+                "backend.services.market_data._build_market_data",
+                side_effect=[{"revision": 1}, {"revision": 2}],
+            ) as build_market_data,
+        ):
+            first = get_market_data()
+
+            market_data._cache_updated_at = datetime.now(timezone.utc) - timedelta(minutes=4, seconds=59)
+            self.assertIs(get_market_data(), first)
+
+            market_data._cache_updated_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            self.assertEqual(get_market_data(), {"revision": 2})
+            self.assertEqual(build_market_data.call_count, 2)
+
     def test_formats_current_and_legacy_news_items(self):
         current = _news_item({
             "content": {
@@ -88,26 +112,29 @@ class CsvImportTests(unittest.TestCase):
         self.assertEqual(len(quarterly["candles"]), 1)
         self.assertIn("quarterly", quarterly["zones_by_timeframe"])
 
-    def test_chart_overlay_selects_only_one_nearest_zone_per_timeframe(self):
-        demand_near = {"id": "demand-near", "type": "demand", "proximal": 100, "distal": 96, "score": 5}
+    def test_chart_overlay_includes_all_qualifying_zones_nearest_first(self):
+        demand_near = {"id": "demand-near", "type": "demand", "proximal": 100, "distal": 96, "score": 6}
         demand_far = {"id": "demand-far", "type": "demand", "proximal": 80, "distal": 76, "score": 7}
-        supply_near = {"id": "supply-near", "type": "supply", "proximal": 110, "distal": 114, "score": 6}
+        supply_near = {"id": "supply-near", "type": "supply", "proximal": 110, "distal": 114, "score": 6.5}
         zones = {
             "daily": {"demand": [demand_near, demand_far], "supply": [supply_near]},
             "weekly": {"demand": [demand_far], "supply": []},
         }
 
-        overlays = _nearest_chart_zones(zones, 104)
+        overlays = _qualifying_chart_zones(zones, 104)
 
-        self.assertEqual([zone["id"] for zone in overlays["daily"]], ["demand-near"])
+        self.assertEqual(
+            [zone["id"] for zone in overlays["daily"]],
+            ["demand-near", "supply-near", "demand-far"],
+        )
         self.assertEqual([zone["id"] for zone in overlays["weekly"]], ["demand-far"])
         self.assertEqual(overlays["monthly"], [])
 
-    def test_chart_overlay_ignores_zones_scoring_below_five(self):
-        low_score_near = {"id": "low-score", "type": "demand", "proximal": 100, "distal": 96, "score": 4}
-        qualifying_zone = {"id": "qualifying", "type": "demand", "proximal": 90, "distal": 86, "score": 5}
+    def test_chart_overlay_ignores_zones_scoring_below_six(self):
+        low_score_near = {"id": "low-score", "type": "demand", "proximal": 100, "distal": 96, "score": 5.5}
+        qualifying_zone = {"id": "qualifying", "type": "demand", "proximal": 90, "distal": 86, "score": 6}
 
-        overlays = _nearest_chart_zones(
+        overlays = _qualifying_chart_zones(
             {"daily": {"demand": [low_score_near, qualifying_zone], "supply": []}},
             104,
         )
