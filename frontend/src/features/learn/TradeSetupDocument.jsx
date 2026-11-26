@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { getTradeSetupGuide } from "../../lib/api.js";
@@ -19,7 +20,7 @@ export default function TradeSetupDocument() {
   }, []);
 
   if (error) return <div className="error-banner" role="alert">{error}</div>;
-  if (!document) return <div className="loading-banner">Loading the full trading setup…</div>;
+  if (!document) return <div className="loading-banner"><LoadingIndicator label="Loading the full trading setup…" /></div>;
 
   return (
     <article className="learn-doc-body">

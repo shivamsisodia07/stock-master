@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import { getStockNews } from "../../lib/api.js";
 import { money, relativeTime } from "../../lib/format.js";
 import { appRoutePath } from "../../lib/useAppRouter.js";
@@ -30,7 +31,7 @@ function StockNews({ symbol }) {
     return () => controller.abort();
   }, [symbol]);
 
-  if (loading) return <div className="empty-alerts">Loading company news and important dates…</div>;
+  if (loading) return <div className="empty-alerts"><LoadingIndicator label="Loading company news and important dates…" /></div>;
   if (error) return <div className="error-banner" role="alert">{error}</div>;
 
   return (
@@ -80,12 +81,18 @@ export default function StockPage({ navigate, symbol }) {
       </header>
 
       {market.error && <div className="error-banner" role="alert">{market.error} <button className="text-button" onClick={market.refresh}>Retry</button></div>}
-      {!stock && market.loading && <div className="loading-banner">Loading stock data…</div>}
+      {!stock && market.loading && <div className="loading-banner"><LoadingIndicator label="Loading stock data…" /></div>}
       {stock && <>
         <section className="stock-detail-heading">
-          <div>
+          <div className="stock-heading-main">
             <div className="eyebrow"><span className="eyebrow-line" />NSE · MULTI-TIMEFRAME RESEARCH</div>
-            <h1>{stock.name} <span>{stock.symbol}</span></h1>
+            <div className="stock-heading-title-row">
+              <h1>{stock.name} <span>{stock.symbol}</span></h1>
+              <div className="stock-heading-price">
+                <strong>{money(stock.price)}</strong>
+                <small className={stock.change_pct < 0 ? "negative" : ""}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}% today</small>
+              </div>
+            </div>
             <p className="page-subtitle">Price, trade plans, company news, and important dates in one view.</p>
           </div>
           <div className="stock-detail-actions">
@@ -94,13 +101,6 @@ export default function StockPage({ navigate, symbol }) {
           </div>
         </section>
 
-        <section className="stock-detail-summary">
-          <article><span>LAST PRICE</span><strong>{money(stock.price)}</strong><small className={stock.change_pct < 0 ? "negative" : ""}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}% today</small></article>
-          <article><span>QUOTE STATUS</span><strong>{stock.freshness.status}</strong><small>{relativeTime(stock.freshness.as_of)}</small></article>
-          <article><span>LAST DAILY CANDLE</span><strong>{stock.latest_candle_date}</strong><small>Yahoo Finance · NSE</small></article>
-        </section>
-
-        
         <section className="stock-trades-section">
           <div className="stock-section-heading"><div><h2>Trade plans by timeframe</h2><p>All available demand and supply zone setups; levels are mechanical references, not recommendations.</p></div><span>{TIMEFRAMES.length} timeframes</span></div>
           <div className="stock-trades-grid">
@@ -144,22 +144,11 @@ export default function StockPage({ navigate, symbol }) {
           </div>
         </section>
 
-
-        <section className="stock-tradingview-section" aria-label="TradingView stock research">
-           <article className="tradingview-panel tradingview-profile-panel">
-              <h3>Company profile</h3>
-              <TradingViewWidget type="profile" symbol={stock.symbol} />
-            </article>
-          <div className="stock-tradingview-grid">
-            <article className="tradingview-panel">
-              <h3>Technical analysis</h3>
-              <TradingViewWidget type="technical" symbol={stock.symbol} />
-            </article>
-            <article className="tradingview-panel">
-              <h3>Fundamental analysis</h3>
-              <TradingViewWidget type="fundamentals" symbol={stock.symbol} />
-            </article>
-          </div>
+        <section className="stock-tradingview-section" aria-label="Fundamental analysis">
+          <article className="tradingview-panel">
+            <h3>Fundamental analysis</h3>
+            <TradingViewWidget type="fundamentals" symbol={stock.symbol} />
+          </article>
         </section>
         <section className="stock-news-section"><StockNews symbol={stock.symbol} /></section>
       </>}

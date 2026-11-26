@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import useMarketData from "../scanner/useMarketData.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
 import useAlerts from "../alerts/useAlerts.js";
@@ -38,7 +39,7 @@ export default function HomePage({ navigate }) {
         <Breadcrumb navigate={navigate} current="Home" />
         <div className="top-actions">
           <div className="market-status"><i style={{ background: market.error ? "var(--red)" : "var(--green)" }} /><span>{market.error ? "FEED UNAVAILABLE" : "MARKET OVERVIEW"}</span></div>
-          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : "Waiting for quotes"}</div>
+          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : market.loading ? <LoadingIndicator compact label="Waiting for quotes" /> : "No quotes yet"}</div>
         </div>
       </header>
 
@@ -55,7 +56,7 @@ export default function HomePage({ navigate }) {
       {market.error && <div className="error-banner" role="alert">{market.error} <button className="text-button" onClick={market.refresh}>Retry</button></div>}
 
       <section className="home-summary grid grid-cols-1 gap-3 min-[561px]:grid-cols-3" aria-label="Market summary">
-        <article className="home-summary-card"><span>STOCKS IN UNIVERSE</span><strong>{market.loading ? "…" : market.stocks.length}</strong><small>Nifty 100 market coverage</small></article>
+        <article className="home-summary-card"><span>STOCKS IN UNIVERSE</span><strong>{market.loading ? <LoadingIndicator compact label="Loading…" /> : market.stocks.length}</strong><small>Nifty 100 market coverage</small></article>
         <article className="home-summary-card"><span>WATCHLIST</span><strong>{watchlist.symbols.length}</strong><small>Stocks saved on this device</small></article>
         <article className="home-summary-card"><span>ACTIVE ALERTS</span><strong>{alerts.rules.length}</strong><small>Zone-entry rules on this device</small></article>
       </section>
@@ -77,7 +78,7 @@ export default function HomePage({ navigate }) {
             <p>{tradeScan?.started_at ? `Scanned ${tradeScan.scanned} stocks across ${tradeScan.setups.length} setups · ${relativeTime(tradeScan.started_at)}` : "Nightly Nifty 100 income-trade collection"}</p>
           </div>
         </div>
-        {tradeScanLoading && <div className="loading-banner">Loading the latest collected scans…</div>}
+        {tradeScanLoading && <div className="loading-banner"><LoadingIndicator label="Loading the latest collected scans…" /></div>}
         {tradeScanError && <div className="error-banner" role="alert">{tradeScanError}</div>}
         {!tradeScanLoading && !tradeScanError && !tradeScan?.started_at && <div className="empty-state"><h3>No nightly scans collected yet</h3><p>Collected trade setups will appear here after the scheduled scan runs.</p></div>}
         {tradeScan?.started_at && tradeScan.failed > 0 && <div className="warning-banner" role="status">{tradeScan.failed} stock or setup scans failed; available results are shown.</div>}

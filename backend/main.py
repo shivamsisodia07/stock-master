@@ -14,7 +14,14 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from backend.services.market_data import get_chart_data, get_market_data, get_stock_news_and_events, import_csv_market_data
+from backend.services.market_data import (
+    get_chart_data,
+    get_market_data,
+    get_stock_quotes,
+    get_stock_news_and_events,
+    import_csv_market_data,
+    search_stock_universe,
+)
 from backend.services.trade_journal import create_trade, delete_trade, list_trades, update_trade
 from backend.services.tradesetup import SETUPS, analyze_symbol, scan_nifty100
 from backend.services.trade_scan_store import get_latest_trade_scan
@@ -44,6 +51,22 @@ async def health() -> dict:
 @app.get("/api/market-data")
 async def market_data() -> dict:
     return await asyncio.to_thread(get_market_data)
+
+
+@app.get("/api/stocks/search")
+async def stock_search(
+    q: str = Query(min_length=1, max_length=100),
+    limit: int = Query(default=8, ge=1, le=20),
+) -> dict:
+    return {"stocks": await asyncio.to_thread(search_stock_universe, q, limit)}
+
+
+@app.get("/api/stocks/quotes")
+async def stock_quotes(symbols: list[str] = Query(min_length=1)) -> dict:
+    try:
+        return await asyncio.to_thread(get_stock_quotes, symbols)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 class CsvImportRequest(BaseModel):
@@ -158,7 +181,7 @@ async def remove_journal_trade(trade_id: str) -> dict:
 
 @app.get("/api/stocks/{symbol}/chart")
 async def stock_chart(symbol: str, timeframe: str = Query(default="daily")) -> dict:
-    return get_chart_data(symbol, timeframe)
+    return await asyncio.to_thread(get_chart_data, symbol, timeframe)
 
 
 @app.get("/api/stocks/{symbol}/news")

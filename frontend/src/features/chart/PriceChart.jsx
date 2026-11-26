@@ -245,7 +245,9 @@ export default function PriceChart({
   fullScreen = false,
   fullscreenInModal = false,
   onToggleFullScreen,
+  onTimeframeChange,
 }) {
+  const chartRootRef = useRef(null);
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const mainSeriesRef = useRef(null);
@@ -255,6 +257,8 @@ export default function PriceChart({
   const drawingToolRef = useRef("pan");
   const pendingPointRef = useRef(null);
   const lastVisibleRangeRef = useRef(null);
+  const lastCandleCountRef = useRef(0);
+  const lastChartContextRef = useRef(null);
   const [chartRevision, setChartRevision] = useState(0);
   const [hoveredCandle, setHoveredCandle] = useState(null);
   const [drawingTool, setDrawingTool] = useState("pan");
@@ -269,6 +273,21 @@ export default function PriceChart({
   const [visibleTimeframes, setVisibleTimeframes] = useState(savedLayout.visibleTimeframes);
   const [drawings, setDrawings] = useState(savedLayout.drawings);
   const [drawingMessage, setDrawingMessage] = useState("");
+
+  useEffect(() => {
+    const closeOtherMenus = (event) => {
+      const root = chartRootRef.current;
+      if (!root) return;
+      const clickedMenu = event.target instanceof Element
+        ? event.target.closest(".chart-menu")
+        : null;
+      root.querySelectorAll(".chart-menu[open]").forEach((menu) => {
+        if (menu !== clickedMenu) menu.open = false;
+      });
+    };
+    document.addEventListener("pointerdown", closeOtherMenus);
+    return () => document.removeEventListener("pointerdown", closeOtherMenus);
+  }, []);
 
   useEffect(() => {
     drawingToolRef.current = drawingTool;
@@ -546,8 +565,24 @@ export default function PriceChart({
 
     chartRef.current = chart;
     const previousRange = lastVisibleRangeRef.current;
-    if (previousRange) chart.timeScale().setVisibleLogicalRange(previousRange);
-    else chart.timeScale().fitContent();
+    const chartContext = `${symbol || "stock"}:${selectedTimeframe}`;
+    const addedCandles = candles.length - lastCandleCountRef.current;
+    const wasAtLatestCandle = previousRange
+      && lastChartContextRef.current === chartContext
+      && lastCandleCountRef.current > 0
+      && previousRange.to >= lastCandleCountRef.current - 1;
+    if (previousRange && wasAtLatestCandle && addedCandles > 0) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: previousRange.from + addedCandles,
+        to: previousRange.to + addedCandles,
+      });
+    } else if (previousRange) {
+      chart.timeScale().setVisibleLogicalRange(previousRange);
+    } else {
+      chart.timeScale().fitContent();
+    }
+    lastCandleCountRef.current = candles.length;
+    lastChartContextRef.current = chartContext;
     setChartRevision((revision) => revision + 1);
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -647,7 +682,10 @@ export default function PriceChart({
   }
 
   return (
-    <div className={`interactive-chart ${fullScreen && !fullscreenInModal ? "interactive-chart-fullscreen" : ""}`}>
+    <div
+      ref={chartRootRef}
+      className={`interactive-chart ${fullScreen && !fullscreenInModal ? "interactive-chart-fullscreen" : ""}`}
+    >
       <div className="chart-interaction-bar">
         <div className="chart-crosshair-data" aria-live="polite">
           <strong>{displayedCandle.date}</strong>
@@ -731,6 +769,18 @@ export default function PriceChart({
 
           <button className="chart-compact-button" type="button" onClick={() => chartRef.current?.timeScale().fitContent()}>Reset view</button>
           <span className="chart-layout-status" role="status">{layoutStatus}</span>
+          {fullScreen && (
+            <select
+              className="chart-compact-select chart-fullscreen-timeframe"
+              aria-label="Fullscreen chart timeframe"
+              value={selectedTimeframe}
+              onChange={(event) => onTimeframeChange?.(event.target.value)}
+            >
+              {Object.entries(TIMEFRAME_LABELS).map(([timeframe, label]) => (
+                <option key={timeframe} value={timeframe}>{label}</option>
+              ))}
+            </select>
+          )}
           <button
             className="chart-compact-button chart-fullscreen-button"
             type="button"

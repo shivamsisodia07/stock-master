@@ -2,15 +2,21 @@ import unittest
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
+import pandas as pd
+
 import backend.services.market_data as market_data
 from backend.services.csv_import import parse_ohlc_csv
 from backend.services.market_data import (
+    _aggregate_candles,
     _calendar_events,
     _qualifying_chart_zones,
     _news_item,
+    _refresh_history,
     get_chart_data,
     get_market_data,
+    get_stock_quotes,
     import_csv_market_data,
+    search_stock_universe,
 )
 
 
@@ -111,6 +117,208 @@ class CsvImportTests(unittest.TestCase):
         self.assertEqual(len(monthly["candles"]), 1)
         self.assertEqual(len(quarterly["candles"]), 1)
         self.assertIn("quarterly", quarterly["zones_by_timeframe"])
+
+    def test_aggregated_monthly_candle_uses_first_trading_session_date(self):
+        daily = [
+            {"date": "2026-08-03", "open": 100, "high": 105, "low": 99, "close": 104, "volume": 10},
+            {"date": "2026-08-31", "open": 104, "high": 108, "low": 102, "close": 107, "volume": 20},
+        ]
+
+        monthly = _aggregate_candles(daily, "monthly")
+
+        self.assertEqual(monthly[0]["date"], "2026-08-03")
+
+    def test_live_weekly_and_monthly_dates_align_to_first_session(self):
+        daily = [
+            {"date": "2026-07-31", "open": 100, "high": 102, "low": 99, "close": 101, "volume": 10},
+            {"date": "2026-08-03", "open": 101, "high": 103, "low": 100, "close": 102, "volume": 10},
+            {"date": "2026-08-04", "open": 102, "high": 104, "low": 101, "close": 103, "volume": 10},
+            {"date": "2026-08-11", "open": 103, "high": 105, "low": 102, "close": 104, "volume": 10},
+            {"date": "2026-08-12", "open": 104, "high": 106, "low": 103, "close": 105, "volume": 10},
+        ]
+        weekly = [
+            {"date": "2026-08-10", "open": 103, "high": 106, "low": 102, "close": 105, "volume": 20},
+        ]
+        monthly = [
+            {"date": "2026-08-01", "open": 100, "high": 106, "low": 99, "close": 105, "volume": 50},
+        ]
+
+        with (
+            patch.object(market_data, "_history_by_symbol", {}),
+            patch.object(market_data, "_zones_by_symbol", {}),
+            patch.object(market_data, "_history_cache_updated_at", None),
+            patch.object(market_data, "_history_failures", []),
+            patch.object(market_data, "_quotes_by_symbol", {}),
+            patch("backend.services.market_data._symbol_batches", return_value=[["TATASTEEL.NS"]]),
+            patch(
+                "backend.services.market_data._download_candles",
+                side_effect=[
+                    {"TATASTEEL": daily},
+                    {"TATASTEEL": weekly},
+                    {"TATASTEEL": monthly},
+                ],
+            ),
+            patch("backend.services.market_data.detect_zones", return_value=[]),
+        ):
+            _refresh_history([("TATASTEEL", "Tata Steel")], datetime.now(timezone.utc))
+
+            weekly_chart = get_chart_data("TATASTEEL", "weekly")
+            monthly_chart = get_chart_data("TATASTEEL", "monthly")
+
+        self.assertEqual(weekly_chart["candles"][0]["date"], "2026-08-11")
+        self.assertEqual(monthly_chart["candles"][0]["date"], "2026-08-03")
+
+    def test_chart_fetches_history_for_only_requested_symbol(self):
+        daily = [
+            {"date": "2026-07-31", "open": 98, "high": 100, "low": 97, "close": 99, "volume": 10},
+            {"date": "2026-08-03", "open": 100, "high": 105, "low": 99, "close": 104, "volume": 10},
+        ]
+        weekly = [
+            {"date": "2026-08-03", "open": 100, "high": 105, "low": 99, "close": 104, "volume": 10},
+        ]
+        monthly = [
+            {"date": "2026-08-01", "open": 100, "high": 105, "low": 99, "close": 104, "volume": 10},
+        ]
+
+        with (
+            patch.object(market_data, "_history_by_symbol", {}),
+            patch.object(market_data, "_history_updated_at_by_symbol", {}),
+            patch.object(market_data, "_zones_by_symbol", {}),
+            patch.object(market_data, "_quotes_by_symbol", {}),
+            patch.object(market_data, "_quote_updated_at_by_symbol", {}),
+            patch(
+                "backend.services.market_data._download_candles",
+                side_effect=[
+                    {"TATASTEEL": daily},
+                    {"TATASTEEL": weekly},
+                    {"TATASTEEL": monthly},
+                ],
+            ) as download_candles,
+            patch("backend.services.market_data._download_quotes", return_value={}),
+            patch("backend.services.market_data.detect_zones", return_value=[]),
+        ):
+            chart = get_chart_data("TATASTEEL", "monthly")
+
+        self.assertEqual(chart["name"], "Tata Steel")
+        self.assertEqual(chart["candles"][0]["date"], "2026-08-03")
+        self.assertEqual(download_candles.call_count, 3)
+        self.assertTrue(all(call.args[0] == ["TATASTEEL.NS"] for call in download_candles.call_args_list))
+
+    def test_chart_adds_latest_session_candle_when_daily_history_lags(self):
+        daily = [
+            {"date": "2026-11-25", "open": 163.17, "high": 164.9, "low": 156.7, "close": 159.3, "volume": 100},
+        ]
+        latest_session = {
+            "date": "2026-11-26",
+            "open": 159.3,
+            "high": 164.0,
+            "low": 158.0,
+            "close": 163.54,
+            "volume": 500,
+        }
+        with (
+            patch.object(market_data, "_history_by_symbol", {}),
+            patch.object(market_data, "_history_updated_at_by_symbol", {}),
+            patch.object(market_data, "_zones_by_symbol", {}),
+            patch.object(market_data, "_quotes_by_symbol", {}),
+            patch.object(market_data, "_quote_updated_at_by_symbol", {}),
+            patch(
+                "backend.services.market_data._download_candles",
+                side_effect=[
+                    {"TATASTEEL": daily},
+                    {"TATASTEEL": []},
+                    {"TATASTEEL": []},
+                ],
+            ),
+            patch(
+                "backend.services.market_data._download_quotes",
+                return_value={
+                    "TATASTEEL": {
+                        "price": 163.54,
+                        "as_of": "2026-11-26T09:58:00+00:00",
+                        "source": "intraday",
+                        "candle": latest_session,
+                    },
+                },
+            ),
+            patch("backend.services.market_data.detect_zones", return_value=[]),
+        ):
+            chart = get_chart_data("TATASTEEL", "daily")
+
+        self.assertEqual(chart["candles"][-1], latest_session)
+
+    def test_intraday_quote_aggregates_latest_session_ohlcv(self):
+        ticker = "TATASTEEL.NS"
+        columns = pd.MultiIndex.from_tuples([
+            (ticker, "Open"),
+            (ticker, "High"),
+            (ticker, "Low"),
+            (ticker, "Close"),
+            (ticker, "Volume"),
+        ])
+        frame = pd.DataFrame(
+            [
+                [10, 11, 9, 10.5, 100],
+                [10.5, 12, 10, 11.5, 200],
+                [11.5, 13, 11, 12.5, 300],
+            ],
+            index=pd.date_range(
+                "2026-11-26 15:26",
+                periods=3,
+                freq="min",
+                tz="Asia/Kolkata",
+            ),
+            columns=columns,
+        )
+        with patch("backend.services.market_data.yf.download", return_value=frame):
+            quote = market_data._download_quotes([ticker])["TATASTEEL"]
+
+        self.assertEqual(
+            quote["candle"],
+            {
+                "date": "2026-11-26",
+                "open": 10,
+                "high": 13,
+                "low": 9,
+                "close": 12.5,
+                "volume": 600,
+            },
+        )
+
+    def test_stock_search_returns_only_matching_universe_rows(self):
+        universe = [
+            ("TATASTEEL", "Tata Steel"),
+            ("TATAMOTORS", "Tata Motors"),
+            ("RELIANCE", "Reliance Industries"),
+        ]
+        with patch("backend.services.market_data.get_universe", return_value=(universe, {})):
+            results = search_stock_universe("tata", limit=1)
+
+        self.assertEqual(results, [{"symbol": "TATASTEEL", "name": "Tata Steel"}])
+
+    def test_stock_quote_request_returns_only_requested_symbols(self):
+        quotes = {
+            "TATASTEEL": {"price": 150, "as_of": "2026-08-03T10:00:00+00:00"},
+            "RELIANCE": {"price": 1200, "as_of": "2026-08-03T10:00:00+00:00"},
+        }
+        with (
+            patch.object(market_data, "_quotes_by_symbol", quotes),
+            patch.object(market_data, "_quote_updated_at_by_symbol", {}),
+            patch("backend.services.market_data._refresh_symbol_quote") as refresh_quote,
+        ):
+            payload = get_stock_quotes(["TATASTEEL"])
+
+        self.assertEqual(
+            payload["stocks"],
+            [{
+                "symbol": "TATASTEEL",
+                "name": "Tata Steel",
+                "price": 150,
+                "as_of": "2026-08-03T10:00:00+00:00",
+            }],
+        )
+        self.assertEqual(refresh_quote.call_count, 1)
+        self.assertEqual(refresh_quote.call_args.args[0], "TATASTEEL")
 
     def test_chart_overlay_includes_all_qualifying_zones_nearest_first(self):
         demand_near = {"id": "demand-near", "type": "demand", "proximal": 100, "distal": 96, "score": 6}

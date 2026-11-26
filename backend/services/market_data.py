@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
 from fastapi import HTTPException
 
-from backend.data.universe import get_universe
+from backend.data.universe import STOCKS, get_universe
 from backend.services.csv_import import parse_ohlc_csv
 from backend.services.zone_scanner import MIN_ZONE_SCORE, TIMEFRAMES, detect_zones, nearest_zone
 
@@ -19,6 +20,7 @@ CACHE_SECONDS = 5 * 60
 HISTORY_CACHE_SECONDS = 15 * 60
 MIN_CHART_ZONE_SCORE = 6
 BATCH_SIZE = 20
+STOCK_NAMES = dict(STOCKS)
 INTERVALS = {
     "daily": ("2y", "1d"),
     "weekly": ("10y", "1wk"),
@@ -28,8 +30,10 @@ _cache: dict | None = None
 _cache_updated_at: datetime | None = None
 _history_cache_updated_at: datetime | None = None
 _history_by_symbol: dict[str, dict[str, list[dict]]] = {}
+_history_updated_at_by_symbol: dict[str, datetime] = {}
 _zones_by_symbol: dict[str, dict[str, list[dict]]] = {}
 _quotes_by_symbol: dict[str, dict] = {}
+_quote_updated_at_by_symbol: dict[str, datetime] = {}
 _history_failures: list[str] = []
 _quote_failures: list[str] = []
 _imported_history: dict[str, dict[str, list[dict]]] = {}
@@ -182,16 +186,60 @@ def _download_quotes(tickers: list[str]) -> dict[str, dict]:
         if not valid:
             continue
         quote_time, price = valid[-1]
+        quote_date = _date_string(quote_time)
         if hasattr(quote_time, "to_pydatetime"):
             quote_time = quote_time.to_pydatetime()
         if quote_time.tzinfo is None:
             quote_time = quote_time.replace(tzinfo=NSE_TIMEZONE)
-        quotes[ticker.removesuffix(".NS")] = {
+        quote = {
             "price": round(price, 2),
             "as_of": quote_time.astimezone(timezone.utc).isoformat(),
             "source": "intraday",
         }
+        open_series = _column_for_ticker(frame, ticker, "Open")
+        high_series = _column_for_ticker(frame, ticker, "High")
+        low_series = _column_for_ticker(frame, ticker, "Low")
+        volume_series = _column_for_ticker(frame, ticker, "Volume")
+        if all(series is not None for series in (open_series, high_series, low_series, volume_series)):
+            session_rows = []
+            for index in frame.index:
+                if _date_string(index) != quote_date:
+                    continue
+                values = {
+                    "open": float(open_series.loc[index]),
+                    "high": float(high_series.loc[index]),
+                    "low": float(low_series.loc[index]),
+                    "close": float(close.loc[index]),
+                    "volume": float(volume_series.loc[index]),
+                }
+                if (
+                    any(not math.isfinite(value) for value in values.values())
+                    or values["low"] > values["high"]
+                    or values["low"] > min(values["open"], values["close"])
+                    or values["high"] < max(values["open"], values["close"])
+                ):
+                    continue
+                session_rows.append(values)
+            if session_rows:
+                quote["candle"] = {
+                    "date": quote_date,
+                    "open": round(session_rows[0]["open"], 2),
+                    "high": round(max(row["high"] for row in session_rows), 2),
+                    "low": round(min(row["low"] for row in session_rows), 2),
+                    "close": round(session_rows[-1]["close"], 2),
+                    "volume": int(sum(row["volume"] for row in session_rows)),
+                }
+        quotes[ticker.removesuffix(".NS")] = quote
     return quotes
+
+
+def _merge_intraday_candle(candles: list[dict], quote: dict) -> list[dict]:
+    candle = quote.get("candle")
+    if not candle or (candles and candle["date"] < candles[-1]["date"]):
+        return candles
+    if candles and candle["date"] == candles[-1]["date"]:
+        return [*candles[:-1], candle]
+    return [*candles, candle]
 
 
 def _fallback_quote(candles: list[dict], now: datetime) -> dict:
@@ -297,6 +345,17 @@ def _refresh_history(universe: list[tuple[str, str]], now: datetime) -> None:
                 logger.exception("Failed downloading %s candles for batch %s", interval_name, batch_index + 1)
 
     for stock_history in history.values():
+        daily = stock_history.get("daily", [])
+        if daily:
+            for timeframe in ("weekly", "monthly"):
+                candles = stock_history.get(timeframe, [])
+                if candles:
+                    stock_history[timeframe] = _align_candles_to_first_session(
+                        candles,
+                        daily,
+                        timeframe,
+                    )
+
         monthly = stock_history.get("monthly", [])
         if monthly:
             stock_history["quarterly"] = _aggregate_candles(monthly, "quarterly")
@@ -313,8 +372,61 @@ def _refresh_history(universe: list[tuple[str, str]], now: datetime) -> None:
             }
     _history_by_symbol = history
     _zones_by_symbol = zones_by_symbol
+    _history_updated_at_by_symbol.update({symbol: now for symbol in history})
     _history_cache_updated_at = now
     _history_failures = failed_batches
+
+
+def _refresh_symbol_history(symbol: str, now: datetime) -> None:
+    global _history_by_symbol, _zones_by_symbol
+    history = dict(_history_by_symbol.get(symbol, {}))
+    ticker = f"{symbol}.NS"
+    for timeframe, (period, interval) in INTERVALS.items():
+        try:
+            bars = _download_candles([ticker], period, interval)
+            if symbol in bars:
+                history[timeframe] = bars[symbol]
+        except Exception:
+            logger.exception("Failed downloading %s candles for %s", timeframe, symbol)
+
+    daily = history.get("daily", [])
+    if not daily:
+        return
+
+    try:
+        intraday_quotes = _download_quotes([ticker])
+    except Exception:
+        logger.exception("Failed downloading latest session candle for %s", symbol)
+    else:
+        quote = intraday_quotes.get(symbol)
+        if quote is not None:
+            _quotes_by_symbol.update(intraday_quotes)
+            _quote_updated_at_by_symbol[symbol] = now
+            daily = _merge_intraday_candle(daily, quote)
+            history["daily"] = daily
+
+    for timeframe in ("weekly", "monthly"):
+        candles = history.get(timeframe, [])
+        if candles:
+            history[timeframe] = _align_candles_to_first_session(candles, daily, timeframe)
+    if history.get("monthly"):
+        history["quarterly"] = _aggregate_candles(history["monthly"], "quarterly")
+
+    zones = {}
+    for timeframe in TIMEFRAMES:
+        found = detect_zones(history.get(timeframe, []), timeframe, now=now)
+        zones[timeframe] = {
+            "demand": [zone for zone in found if zone["type"] == "demand"],
+            "supply": [zone for zone in found if zone["type"] == "supply"],
+        }
+
+    updated_history = dict(_history_by_symbol)
+    updated_history[symbol] = history
+    _history_by_symbol = updated_history
+    updated_zones = dict(_zones_by_symbol)
+    updated_zones[symbol] = zones
+    _zones_by_symbol = updated_zones
+    _history_updated_at_by_symbol[symbol] = now
 
 
 def _refresh_quotes(universe: list[tuple[str, str]]) -> None:
@@ -322,14 +434,41 @@ def _refresh_quotes(universe: list[tuple[str, str]]) -> None:
     quotes = dict(_quotes_by_symbol)
     failed_batches = []
     symbol_batches = _symbol_batches(universe)
+    refreshed_symbols = set()
     for batch_index, tickers in enumerate(symbol_batches):
         try:
-            quotes.update(_download_quotes(tickers))
+            fresh_quotes = _download_quotes(tickers)
+            quotes.update(fresh_quotes)
+            refreshed_symbols.update(fresh_quotes)
         except Exception:
             failed_batches.append(f"intraday:{batch_index + 1}")
             logger.exception("Failed downloading intraday prices for batch %s", batch_index + 1)
     _quotes_by_symbol = quotes
+    refreshed_at = datetime.now(timezone.utc)
+    _quote_updated_at_by_symbol.update({
+        symbol: refreshed_at
+        for symbol in refreshed_symbols
+    })
     _quote_failures = failed_batches
+
+
+def _refresh_symbol_quote(symbol: str, now: datetime) -> None:
+    last_updated = _quote_updated_at_by_symbol.get(symbol)
+    if last_updated is not None and now - last_updated < timedelta(seconds=CACHE_SECONDS):
+        return
+    local_now = now.astimezone(NSE_TIMEZONE)
+    if not (
+        local_now.weekday() < 5
+        and time(9, 15) <= local_now.time().replace(tzinfo=None) <= time(15, 30)
+    ):
+        return
+    try:
+        quotes = _download_quotes([f"{symbol}.NS"])
+    except Exception:
+        logger.exception("Failed downloading intraday price for %s", symbol)
+        return
+    _quotes_by_symbol.update(quotes)
+    _quote_updated_at_by_symbol[symbol] = now
 
 
 def _build_market_data(
@@ -408,25 +547,58 @@ def _build_market_data(
     }
 
 
+def _period_key(candle_date: date, timeframe: str) -> tuple[int, int]:
+    if timeframe == "weekly":
+        iso_date = candle_date.isocalendar()
+        return (iso_date.year, iso_date.week)
+    if timeframe == "monthly":
+        return (candle_date.year, candle_date.month)
+    if timeframe == "quarterly":
+        return (candle_date.year, (candle_date.month - 1) // 3)
+    raise ValueError(f"Unsupported aggregation timeframe: {timeframe}")
+
+
+def _align_candles_to_first_session(
+    candles: list[dict],
+    daily_candles: list[dict],
+    timeframe: str,
+) -> list[dict]:
+    if timeframe not in ("weekly", "monthly"):
+        raise ValueError(f"Unsupported alignment timeframe: {timeframe}")
+    if not candles or not daily_candles:
+        return candles
+
+    first_sessions: dict[tuple[int, int], str] = {}
+    for candle in daily_candles:
+        key = _period_key(date.fromisoformat(candle["date"]), timeframe)
+        first_date = first_sessions.get(key)
+        if first_date is None or candle["date"] < first_date:
+            first_sessions[key] = candle["date"]
+
+    earliest_daily_date = min(date.fromisoformat(candle["date"]) for candle in daily_candles)
+    partial_period_key = _period_key(earliest_daily_date, timeframe)
+    aligned = []
+    for candle in candles:
+        key = _period_key(date.fromisoformat(candle["date"]), timeframe)
+        first_session = first_sessions.get(key)
+        if first_session is None or key == partial_period_key:
+            aligned.append(candle)
+        else:
+            aligned.append({**candle, "date": first_session})
+    return aligned
+
+
 def _aggregate_candles(candles: list[dict], timeframe: str) -> list[dict]:
     grouped: dict[tuple[int, int], list[dict]] = {}
     for candle in candles:
         candle_date = datetime.fromisoformat(candle["date"]).date()
-        if timeframe == "weekly":
-            iso_date = candle_date.isocalendar()
-            key = (iso_date.year, iso_date.week)
-        elif timeframe == "monthly":
-            key = (candle_date.year, candle_date.month)
-        elif timeframe == "quarterly":
-            key = (candle_date.year, (candle_date.month - 1) // 3)
-        else:
-            raise ValueError(f"Unsupported aggregation timeframe: {timeframe}")
+        key = _period_key(candle_date, timeframe)
         grouped.setdefault(key, []).append(candle)
 
     result = []
     for group in grouped.values():
         result.append({
-            "date": group[-1]["date"],
+            "date": group[0]["date"],
             "open": group[0]["open"],
             "high": max(candle["high"] for candle in group),
             "low": min(candle["low"] for candle in group),
@@ -524,6 +696,7 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         }
         return {
             "symbol": normalized_symbol,
+            "name": STOCK_NAMES.get(normalized_symbol, normalized_symbol),
             "timeframe": timeframe,
             "current_price": current_price,
             "candles": history.get(timeframe, []),
@@ -532,13 +705,28 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
             "trends": trends,
             "updated_at": None,
         }
+
+    now = datetime.now(timezone.utc)
+    last_history_update = _history_updated_at_by_symbol.get(normalized_symbol)
+    if (
+        normalized_symbol not in _history_by_symbol
+        or last_history_update is None
+        or now - last_history_update >= timedelta(seconds=HISTORY_CACHE_SECONDS)
+    ):
+        _refresh_symbol_history(normalized_symbol, now)
+
     candles_by_timeframe = _history_by_symbol.get(normalized_symbol)
-    if candles_by_timeframe is None:
-        raise HTTPException(status_code=404, detail=f"No market data found for {normalized_symbol}.")
+    if candles_by_timeframe is None or not candles_by_timeframe.get("daily"):
+        raise HTTPException(status_code=503, detail=f"No chart history is currently available for {normalized_symbol}.")
+    _refresh_symbol_quote(normalized_symbol, now)
     daily = candles_by_timeframe.get("daily", [])
     price = _quotes_by_symbol.get(normalized_symbol, {}).get(
         "price",
         daily[-1]["close"] if daily else 0,
+    )
+    updated_at = (
+        _history_updated_at_by_symbol.get(normalized_symbol)
+        or _history_cache_updated_at
     )
     zones_by_timeframe = _qualifying_chart_zones(
         _zones_by_symbol.get(normalized_symbol, {}),
@@ -551,13 +739,70 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
     }
     return {
         "symbol": normalized_symbol,
+        "name": STOCK_NAMES.get(normalized_symbol, normalized_symbol),
         "timeframe": timeframe,
         "current_price": price,
         "candles": candles_by_timeframe.get(timeframe, []),
         "zones": _zones_by_type(selected_zones),
         "zones_by_timeframe": zones_by_timeframe,
         "trends": trends,
-        "updated_at": _history_cache_updated_at.isoformat() if _history_cache_updated_at else None,
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
+def search_stock_universe(query: str, limit: int = 8) -> list[dict]:
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return []
+
+    universe, _ = get_universe()
+    exact = []
+    prefix = []
+    contains = []
+    for symbol, name in universe:
+        normalized_symbol = symbol.casefold()
+        normalized_name = name.casefold()
+        stock = {"symbol": symbol, "name": name}
+        if normalized_symbol == normalized_query:
+            exact.append(stock)
+        elif normalized_symbol.startswith(normalized_query) or normalized_name.startswith(normalized_query):
+            prefix.append(stock)
+        elif normalized_query in normalized_symbol or normalized_query in normalized_name:
+            contains.append(stock)
+    return (exact + prefix + contains)[:limit]
+
+
+def get_stock_quotes(symbols: list[str]) -> dict:
+    normalized_symbols = list(dict.fromkeys(
+        symbol.strip().upper().removesuffix(".NS")
+        for symbol in symbols
+        if isinstance(symbol, str) and symbol.strip()
+    ))
+    if not normalized_symbols:
+        raise ValueError("At least one stock symbol is required.")
+    if len(normalized_symbols) > 100:
+        raise ValueError("A maximum of 100 stock symbols can be requested.")
+    if any(not re.fullmatch(r"[A-Z0-9&-]{1,20}", symbol) for symbol in normalized_symbols):
+        raise ValueError("One or more stock symbols are invalid.")
+
+    now = datetime.now(timezone.utc)
+    stocks = []
+    for symbol in normalized_symbols:
+        _refresh_symbol_quote(symbol, now)
+        quote = _quotes_by_symbol.get(symbol)
+        if quote is not None:
+            stocks.append({
+                "symbol": symbol,
+                "name": STOCK_NAMES.get(symbol, symbol),
+                "price": quote["price"],
+                "as_of": quote["as_of"],
+            })
+
+    local_now = now.astimezone(NSE_TIMEZONE)
+    market_open = local_now.weekday() < 5 and time(9, 15) <= local_now.time().replace(tzinfo=None) <= time(15, 30)
+    return {
+        "market_status": "open" if market_open else "closed",
+        "stocks": stocks,
     }
 
 

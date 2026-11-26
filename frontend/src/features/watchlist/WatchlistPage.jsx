@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import useAlerts from "../alerts/useAlerts.js";
 import useMarketData from "../scanner/useMarketData.js";
 import ZoneCard from "../scanner/ZoneCard.jsx";
@@ -50,7 +51,7 @@ export default function WatchlistPage({ navigate }) {
         <Breadcrumb navigate={navigate} current="Watchlist" />
         <div className="top-actions">
           <div className="market-status"><i style={{ background: market.error ? "var(--red)" : "var(--green)" }} /><span>{market.error ? "FEED UNAVAILABLE" : "SAVED STOCKS"}</span></div>
-          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : "Waiting for quotes"}</div>
+          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : market.loading ? <LoadingIndicator compact label="Waiting for quotes" /> : "No quotes yet"}</div>
         </div>
       </header>
 
@@ -65,12 +66,12 @@ export default function WatchlistPage({ navigate }) {
 
       <section className="watchlist-overview grid grid-cols-2 gap-2 min-[561px]:grid-cols-3 min-[561px]:gap-3" aria-label="Watchlist summary">
         <article className="watchlist-stat"><span>SAVED STOCKS</span><strong>{watchlist.symbols.length}</strong><small>Kept on this device</small></article>
-        <article className="watchlist-stat"><span>IN MARKET DATA</span><strong>{market.loading ? "…" : trackedStocks.length}</strong><small>Current Nifty 100 coverage</small></article>
-        <article className="watchlist-stat"><span>FRESH QUOTES</span><strong>{market.loading ? "…" : `${freshCount}/${trackedStocks.length}`}</strong><small>Latest status from the feed</small></article>
+        <article className="watchlist-stat"><span>IN MARKET DATA</span><strong>{market.loading ? <LoadingIndicator compact label="Loading…" /> : trackedStocks.length}</strong><small>Current Nifty 100 coverage</small></article>
+        <article className="watchlist-stat"><span>FRESH QUOTES</span><strong>{market.loading ? <LoadingIndicator compact label="Loading…" /> : `${freshCount}/${trackedStocks.length}`}</strong><small>Latest status from the feed</small></article>
       </section>
 
       {market.error && <div className="error-banner" role="alert">{market.error} <button className="text-button" onClick={market.refresh}>Retry</button></div>}
-      {market.loading && <div className="loading-banner">Loading your saved stocks…</div>}
+      {market.loading && <div className="loading-banner"><LoadingIndicator label="Loading your saved stocks…" /></div>}
 
       <section className="watchlist-controls" aria-label="Watchlist filters">
         <div className="tabs timeframe-tabs" role="tablist" aria-label="Watchlist timeframe">

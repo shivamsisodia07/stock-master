@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import useMarketData from "../scanner/useMarketData.js";
 
 const TradeSetupDocument = lazy(() => import("./TradeSetupDocument.jsx"));
@@ -205,7 +206,7 @@ export default function LearnPage({ navigate }) {
         </section>
 
         <section className="learn-section learn-trade-setup" id="trading-setup" aria-label="Complete trading setup">
-          <Suspense fallback={<div className="loading-banner">Loading the full trading setup…</div>}>
+          <Suspense fallback={<div className="loading-banner"><LoadingIndicator label="Loading the full trading setup…" /></div>}>
             <TradeSetupDocument />
           </Suspense>
         </section>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import { getStockChart } from "../../lib/api.js";
 import { usePersistentArray } from "../../lib/storage.js";
 import PriceChart from "./PriceChart.jsx";
@@ -82,7 +83,7 @@ export default function ChartModal({ stock, initialTimeframe = "monthly", onClos
           </div>
         </header>
         <div className="chart-legend"><span><i className="demand-swatch" /> Demand zone</span><span><i className="supply-swatch" /> Supply zone</span><span><i className="current-swatch" /> Current price</span><span>All zones scoring 6/7+ · {chart?.candles?.length || 0} candles · {timeframe}</span></div>
-        {loading && <div className="chart-loading">Loading {timeframe} chart…</div>}
+        {loading && <div className="chart-loading"><LoadingIndicator label={`Loading ${timeframe} chart…`} /></div>}
         {error && <div className="error-banner" role="alert">{error}</div>}
         {chart && !loading && (
           <PriceChart

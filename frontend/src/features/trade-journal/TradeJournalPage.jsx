@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import { deleteJournalTrade, getJournalTrades, saveJournalTrade } from "../../lib/api.js";
 import useMarketData from "../scanner/useMarketData.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
@@ -262,7 +263,7 @@ export default function TradeJournalPage({ navigate }) {
     <WorkspaceLayout view="journal" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={market.stocks}>
       <header className="topbar">
         <Breadcrumb navigate={navigate} current="Trade journal" />
-        <div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{loading ? "LOADING JOURNAL" : "PRIVATE TRADE LOG"}</span></div></div>
+        <div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{loading ? <LoadingIndicator compact label="LOADING JOURNAL" /> : "PRIVATE TRADE LOG"}</span></div></div>
       </header>
 
       <section className="page-heading journal-page-heading">
@@ -347,7 +348,7 @@ export default function TradeJournalPage({ navigate }) {
             </section>
             <label className="journal-checkbox"><input type="checkbox" name="followed_rules" checked={form.followed_rules} onChange={updateField} /><span>I followed my trade plan and rules</span></label>
             <div className="journal-form-actions">
-              <button type="submit" className="primary-button" disabled={saving}>{saving ? "Saving…" : editingId ? "Save changes" : "Save trade"}</button>
+              <button type="submit" className="primary-button" disabled={saving}>{saving ? <LoadingIndicator compact label="Saving…" /> : editingId ? "Save changes" : "Save trade"}</button>
               {error && <span className="journal-form-error" role="alert">{error}</span>}
             </div>
           </form>
@@ -359,7 +360,7 @@ export default function TradeJournalPage({ navigate }) {
           <div><h2>Trade history</h2><p>Your journal entries are stored in the application backend.</p></div>
           <label className="journal-filter"><span>Show</span><select className="journal-input" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="ALL">All trades</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option></select></label>
         </div>
-        {loading ? <div className="loading-banner">Loading journal entries…</div> : visibleTrades.length ? (
+        {loading ? <div className="loading-banner"><LoadingIndicator label="Loading journal entries…" /></div> : visibleTrades.length ? (
           <div className="journal-table-wrap">
             <table className="journal-table">
               <thead><tr><th>Trade</th><th>Dates</th><th>Setup</th><th>Entry → Exit</th><th>Quantity</th><th>Status</th><th>Net P&amp;L</th><th>R</th><th>Review</th><th /></tr></thead>

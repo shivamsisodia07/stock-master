@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import useMarketData from "../scanner/useMarketData.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
@@ -52,7 +53,7 @@ export default function IncomeTradesPage({ navigate }) {
     <WorkspaceLayout view="income-trades" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={market.stocks}>
       <header className="topbar">
         <Breadcrumb navigate={navigate} current="Income trades" />
-        <div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{loading ? "SCANNING" : "NIFTY 100"}</span></div></div>
+        <div className="top-actions"><div className="market-status"><i style={{ background: error ? "var(--red)" : "var(--green)" }} /><span>{loading ? <LoadingIndicator compact label="SCANNING" /> : "NIFTY 100"}</span></div></div>
       </header>
 
       <section className="page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between">
@@ -61,7 +62,7 @@ export default function IncomeTradesPage({ navigate }) {
           <h1>Income <span>trades.</span></h1>
           <p className="page-subtitle">Scan the listed setups across a location, trend, and execution timeframe.</p>
         </div>
-        <button className="primary-button" type="button" disabled={loading} onClick={runScan}>{loading ? "Scanning…" : "Run scan ↗"}</button>
+        <button className="primary-button" type="button" disabled={loading} onClick={runScan}>{loading ? <LoadingIndicator compact label="Scanning…" /> : "Run scan ↗"}</button>
       </section>
 
       <section className="income-setup-strip" aria-label="Income trade summary">
@@ -91,7 +92,7 @@ export default function IncomeTradesPage({ navigate }) {
             {SETUP_ORDER.map((code) => <option key={code} value={code}>{code} · {(setups[code] || {}).full_name || "Income Trade"}</option>)}
           </select>
         </label>
-        <button className="primary-button" type="submit" disabled={loading}>{loading ? "Scanning…" : scope === "nifty100" ? "Scan Nifty 100" : "Scan stock"}</button>
+        <button className="primary-button" type="submit" disabled={loading}>{loading ? <LoadingIndicator compact label="Scanning…" /> : scope === "nifty100" ? "Scan Nifty 100" : "Scan stock"}</button>
       </form>
 
       {setup && (
@@ -106,7 +107,7 @@ export default function IncomeTradesPage({ navigate }) {
       )}
 
       {error && <div className="error-banner" role="alert">{error}</div>}
-      {loading && <div className="loading-banner">Loading candles and checking location, trend, and execution…</div>}
+      {loading && <div className="loading-banner"><LoadingIndicator label="Loading candles and checking location, trend, and execution…" /></div>}
 
       {result && !loading && (
         <section className="income-results">

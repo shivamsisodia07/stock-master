@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import useAlerts from "../alerts/useAlerts.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
 import { importCsv } from "../../lib/api.js";
@@ -388,7 +389,7 @@ export default function ScannerPage({ navigate }) {
     >
       <header className="topbar">
         <Breadcrumb navigate={navigate} current="Zone scanner" />
-        <div className="top-actions">
+        {/* <div className="top-actions">
           <div className="market-status">
             <i style={{ background: error ? "var(--red)" : "var(--green)" }} />
             <span>
@@ -414,7 +415,7 @@ export default function ScannerPage({ navigate }) {
                 })
               : "—"}
           </div>
-        </div>
+        </div> */}
       </header>
       <section className="page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between">
         <div>
@@ -429,7 +430,7 @@ export default function ScannerPage({ navigate }) {
             A consistent demand and supply scan across the Nifty 100 universe.
           </p>
         </div>
-        <div className="heading-actions">
+        {/* <div className="heading-actions">
           <button
             className="text-button"
             onClick={() => setShowMethodology(true)}
@@ -448,7 +449,7 @@ export default function ScannerPage({ navigate }) {
             disabled={csvLoading}
             onClick={() => document.getElementById("csv-import").click()}
           >
-            {csvLoading ? "Importing…" : "↑ Import OHLC CSV"}
+            {csvLoading ? <LoadingIndicator compact label="Importing…" /> : "↑ Import OHLC CSV"}
           </button>
           <button
             className="primary-button"
@@ -461,10 +462,10 @@ export default function ScannerPage({ navigate }) {
           >
             {importedData ? "↻ Return to live data" : "↻ Refresh data"}
           </button>
-        </div>
+        </div> */}
       </section>
 
-      <section
+      {/* <section
         className="market-strip flex items-center max-[820px]:flex-wrap"
         aria-label="Market summary"
       >
@@ -479,7 +480,7 @@ export default function ScannerPage({ navigate }) {
                   ? importedData
                     ? "IMPORTED"
                     : "SCANNED"
-                  : "CONNECTING"}
+                  : <LoadingIndicator compact label="CONNECTING" />}
               </span>
             </div>
             <div className="market-desc">
@@ -492,7 +493,7 @@ export default function ScannerPage({ navigate }) {
         <div className="strip-divider" />
         <div className="metric">
           <span className="metric-label">STOCKS LOADED</span>
-          <strong>{stocks.length || (loading ? "…" : "0")}</strong>
+          <strong>{stocks.length || (loading ? <LoadingIndicator compact label="Loading…" /> : "0")}</strong>
         </div>
         <div className="metric">
           <span className="metric-label">DEMAND ZONES</span>
@@ -506,7 +507,7 @@ export default function ScannerPage({ navigate }) {
           <span className="pulse" />
           {freshnessSummary} <b>{updatedAt ? relativeTime(updatedAt) : ""}</b>
         </div>
-      </section>
+      </section> */}
 
       {market.error && !importedData && !csvError && (
         <div className="error-banner" role="alert">
@@ -538,135 +539,139 @@ export default function ScannerPage({ navigate }) {
       )}
       {!error && loading && (
         <div className="loading-banner">
-          Loading daily, weekly and monthly market structure…
+          <LoadingIndicator label="Loading daily, weekly and monthly market structure…" />
         </div>
       )}
       <section className="toolbar flex flex-col items-start min-[821px]:flex-row min-[821px]:items-center min-[821px]:justify-between">
-        <div className="toolbar-filters">
-          <div
-            className="tabs timeframe-tabs"
-            role="tablist"
-            aria-label="Zone timeframe"
-          >
-            {TIMEFRAMES.map(([value, label]) => (
-              <button
-                key={value}
-                role="tab"
-                className={`tab ${timeframe === value ? "active" : ""}`}
-                aria-selected={timeframe === value}
-                onClick={() => setTimeframe(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="tabs" role="tablist" aria-label="Zone type filter">
-            {FILTERS.map(([value, label]) => (
-              <button
-                key={value}
-                role="tab"
-                className={`tab ${filter === value ? "active" : ""}`}
-                aria-selected={filter === value}
-                onClick={() => setFilter(value)}
-              >
-                {label}
-                <span>
-                  {value === "demand"
-                    ? nearbyDemand
-                    : value === "supply"
-                      ? nearbySupply
-                      : nearbyDemand + nearbySupply}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="toolbar-controls">
-          <label className="search-box">
-            <span>⌕</span>
-            <input
-              type="search"
-              placeholder="Search stocks..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <label className="filter-control">
-            Max entry distance
-            <select
-              aria-label="Maximum distance from entry"
-              value={Number.isFinite(maxDistancePct) ? maxDistancePct : "any"}
-              onChange={(event) =>
-                setMaxDistancePct(
-                  event.target.value === "any"
-                    ? Number.POSITIVE_INFINITY
-                    : Number(event.target.value),
-                )
-              }
-            >
-              <option value={1}>1%</option>
-              <option value={2}>2%</option>
-              <option value={3}>3%</option>
-              <option value={5}>5%</option>
-              <option value="any">Any</option>
-            </select>
-          </label>
-          <label className="filter-control">
-            Min reward/risk
-            <select
-              aria-label="Minimum reward to risk ratio"
-              value={minRiskReward}
-              onChange={(event) => setMinRiskReward(Number(event.target.value))}
-            >
-              <option value={0}>Any</option>
-              <option value={1}>1R+</option>
-              <option value={1.5}>1.5R+</option>
-              <option value={2}>2R+</option>
-              <option value={3}>3R+</option>
-            </select>
-          </label>
-          <label className="filter-control">
-            Min score
-            <select
-              aria-label="Minimum zone score"
-              value={minScore}
-              onChange={(event) => setMinScore(Number(event.target.value))}
-            >
-              <option value={5}>5 / 7+</option>
-              <option value={5.5}>5.5 / 7+</option>
-              <option value={6}>6 / 7+</option>
-              <option value={6.5}>6.5 / 7+</option>
-              <option value={7}>7 / 7 only</option>
-            </select>
-          </label>
-          <label className="filter-control">
-            Zone freshness
-            <select
-              aria-label="Zone freshness"
-              value={zoneFreshness}
-              onChange={(event) => setZoneFreshness(event.target.value)}
-            >
-              {FRESHNESS_FILTERS.map(([value, label]) => (
-                <option key={value} value={value}>
+        <div className="toolbar-filters scanner-toolbar-filters">
+          <div className="scanner-tab-row">
+            <div className="tabs" role="tablist" aria-label="Zone type filter">
+              {FILTERS.map(([value, label]) => (
+                <button
+                  key={value}
+                  role="tab"
+                  className={`tab ${filter === value ? "active" : ""}`}
+                  aria-selected={filter === value}
+                  onClick={() => setFilter(value)}
+                >
                   {label}
-                </option>
+                  <span>
+                    {value === "demand"
+                      ? nearbyDemand
+                      : value === "supply"
+                        ? nearbySupply
+                        : nearbyDemand + nearbySupply}
+                  </span>
+                </button>
               ))}
-            </select>
-          </label>
-          <label className="filter-control">
-            Sort results
-            <select
-              aria-label="Sort results"
-              value={sort}
-              onChange={(event) => setSort(event.target.value)}
+            </div>
+            <div
+              className="tabs timeframe-tabs"
+              role="tablist"
+              aria-label="Zone timeframe"
             >
-              {SORT_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>
+              {TIMEFRAMES.map(([value, label]) => (
+                <button
+                  key={value}
+                  role="tab"
+                  className={`tab ${timeframe === value ? "active" : ""}`}
+                  aria-selected={timeframe === value}
+                  onClick={() => setTimeframe(value)}
+                >
                   {label}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
+          <div className="toolbar-controls">
+            <label className="search-box">
+              <span>⌕</span>
+              <input
+                type="search"
+                placeholder="Search stocks..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <label className="filter-control">
+              Max entry distance
+              <select
+                aria-label="Maximum distance from entry"
+                value={Number.isFinite(maxDistancePct) ? maxDistancePct : "any"}
+                onChange={(event) =>
+                  setMaxDistancePct(
+                    event.target.value === "any"
+                      ? Number.POSITIVE_INFINITY
+                      : Number(event.target.value),
+                  )
+                }
+              >
+                <option value={1}>1%</option>
+                <option value={2}>2%</option>
+                <option value={3}>3%</option>
+                <option value={5}>5%</option>
+                <option value="any">Any</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              Min reward/risk
+              <select
+                aria-label="Minimum reward to risk ratio"
+                value={minRiskReward}
+                onChange={(event) =>
+                  setMinRiskReward(Number(event.target.value))
+                }
+              >
+                <option value={0}>Any</option>
+                <option value={1}>1R+</option>
+                <option value={1.5}>1.5R+</option>
+                <option value={2}>2R+</option>
+                <option value={3}>3R+</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              Min score
+              <select
+                aria-label="Minimum zone score"
+                value={minScore}
+                onChange={(event) => setMinScore(Number(event.target.value))}
+              >
+                <option value={5}>5 / 7+</option>
+                <option value={5.5}>5.5 / 7+</option>
+                <option value={6}>6 / 7+</option>
+                <option value={6.5}>6.5 / 7+</option>
+                <option value={7}>7 / 7 only</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              Zone freshness
+              <select
+                aria-label="Zone freshness"
+                value={zoneFreshness}
+                onChange={(event) => setZoneFreshness(event.target.value)}
+              >
+                {FRESHNESS_FILTERS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-control">
+              Sort results
+              <select
+                aria-label="Sort results"
+                value={sort}
+                onChange={(event) => setSort(event.target.value)}
+              >
+                {SORT_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </section>
       <section className="results-heading">
@@ -764,7 +769,13 @@ export default function ScannerPage({ navigate }) {
       {!visibleStocks.length && (
         <section className="empty-state">
           <div className="empty-icon">⌕</div>
-          <h3>{loading ? "Loading market data" : "No nearby zones"}</h3>
+          <h3>
+            {loading ? (
+              <LoadingIndicator compact label="Loading market data" />
+            ) : (
+              "No nearby zones"
+            )}
+          </h3>
           <p>
             {loading
               ? "The scanner will update when candles arrive."

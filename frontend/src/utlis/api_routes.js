@@ -1,5 +1,7 @@
 export const API_ROUTES = {
   MARKET_DATA: "/api/market-data",
+  STOCK_SEARCH: (query) => `/api/stocks/search?q=${encodeURIComponent(query)}`,
+  STOCK_QUOTES: (symbols) => `/api/stocks/quotes?${symbols.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join("&")}`,
   STOCK_CHART: (symbol, timeframe) => `/api/stocks/${encodeURIComponent(symbol)}/chart?timeframe=${timeframe}`,
   STOCK_NEWS: (symbol) => `/api/stocks/${encodeURIComponent(symbol)}/news`,
   IMPORT_CSV: "/api/import-csv",

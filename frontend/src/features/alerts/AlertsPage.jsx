@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import { money, relativeTime } from "../../lib/format.js";
 import useMarketData from "../scanner/useMarketData.js";
 import useAlerts from "./useAlerts.js";
@@ -56,7 +57,7 @@ export default function AlertsPage({ navigate }) {
         <Breadcrumb navigate={navigate} current="Alerts" />
         <div className="top-actions">
           <div className="market-status"><i style={{ background: market.error ? "var(--red)" : "var(--green)" }} /><span>{market.error ? "FEED UNAVAILABLE" : "ALERT MONITOR"}</span></div>
-          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : "Waiting for quotes"}</div>
+          <div className="date-label">{market.updatedAt ? relativeTime(market.updatedAt) : market.loading ? <LoadingIndicator compact label="Waiting for quotes" /> : "No quotes yet"}</div>
         </div>
       </header>
 

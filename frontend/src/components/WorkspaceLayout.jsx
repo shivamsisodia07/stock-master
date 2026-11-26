@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { appRoutePath } from "../lib/useAppRouter.js";
+import { searchStocks } from "../lib/api.js";
+import LoadingIndicator from "./LoadingIndicator.jsx";
 
 function followRoute(event, navigate, path) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -35,13 +37,51 @@ function readTheme() {
   }
 }
 
-function StockSearch({ stocks, navigate }) {
+function StockSearch({ stocks, navigate, remoteStockSearch }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [remoteMatches, setRemoteMatches] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
-  const matches = normalizedQuery
+  const localMatches = normalizedQuery
     ? stocks.filter((stock) => stock.symbol.toLowerCase().includes(normalizedQuery) || stock.name.toLowerCase().includes(normalizedQuery)).slice(0, 8)
     : [];
+  const matches = remoteStockSearch ? remoteMatches : localMatches;
+
+  useEffect(() => {
+    if (!remoteStockSearch || !normalizedQuery) {
+      setRemoteMatches([]);
+      setSearching(false);
+      setSearchError("");
+      return undefined;
+    }
+
+    setRemoteMatches([]);
+    setSearching(true);
+    setSearchError("");
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      searchStocks(normalizedQuery, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) setRemoteMatches(result.stocks || []);
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) {
+            setRemoteMatches([]);
+            setSearchError(error.message || "Unable to search stocks.");
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [normalizedQuery, remoteStockSearch]);
 
   function selectStock(stock) {
     setOpen(false);
@@ -90,7 +130,15 @@ function StockSearch({ stocks, navigate }) {
                 <strong>{stock.symbol}</strong><span>{stock.name}</span>
               </button>
             ))
-            : <div className="header-search-empty" role="status">{stocks.length ? "No matching stocks in the current market list." : "Stock list is still loading."}</div>}
+            : <div className="header-search-empty" role={searching ? undefined : "status"}>
+              {searchError || (searching
+                ? <LoadingIndicator compact label="Searching stocks…" />
+                : remoteStockSearch
+                  ? "No matching stocks found."
+                  : stocks.length
+                    ? "No matching stocks in the current market list."
+                    : <LoadingIndicator compact label="Stock list is still loading." />)}
+            </div>}
         </div>
       )}
     </div>
@@ -104,6 +152,7 @@ export default function WorkspaceLayout({
   watchlistCount,
   alertCount,
   stocks = [],
+  remoteStockSearch = false,
   children,
 }) {
   const [mobileSidebar, setMobileSidebar] = useState(() => window.matchMedia("(max-width: 820px)").matches);
@@ -151,7 +200,7 @@ export default function WorkspaceLayout({
             aria-expanded={sidebarOpen}
             onClick={() => setSidebarOpen((open) => !open)}
           >{sidebarOpen ? "‹" : "☰"}</button>
-          <StockSearch stocks={stocks} navigate={navigate} />
+          <StockSearch stocks={stocks} navigate={navigate} remoteStockSearch={remoteStockSearch} />
         </div>
         <div className="site-header-actions">
           <button

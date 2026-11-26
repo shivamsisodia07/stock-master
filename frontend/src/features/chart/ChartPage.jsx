@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
-import { getStockChart } from "../../lib/api.js";
+import LoadingIndicator from "../../components/LoadingIndicator.jsx";
+import { getStockChart, getStockQuotes } from "../../lib/api.js";
 import { money, relativeTime } from "../../lib/format.js";
+import {
+  isNseMarketActive,
+  isNsePostMarketUpdateWindow,
+  nseClock,
+} from "../../lib/marketHours.js";
 import { usePersistentArray } from "../../lib/storage.js";
 import useAlerts from "../alerts/useAlerts.js";
-import useMarketData from "../scanner/useMarketData.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
 import PriceChart from "./PriceChart.jsx";
 
@@ -32,9 +37,7 @@ function decodeSymbol(value) {
 
 export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   const chartSymbol = decodeSymbol(symbol);
-  const market = useMarketData();
   const watchlist = useWatchlist();
-  const alerts = useAlerts(market.stocks, !market.loading && !market.error);
   const [chart, setChart] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -42,9 +45,24 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [chartFullscreen, setChartFullscreen] = useState(false);
+  const [alertStocks, setAlertStocks] = useState([]);
+  const quoteStatus = useRef({ marketStatus: null, date: null });
+  const lastChartFetch = useRef(0);
+  const postMarketFetchDate = useRef(null);
   const savedNote = notes.find((note) => note.symbol === chartSymbol);
-  const stock = market.stocks.find((item) => item.symbol.toLowerCase() === chartSymbol.toLowerCase());
-  const displayName = stock?.name || chartSymbol.toUpperCase();
+  const chartStock = useMemo(() => chart ? {
+    symbol: chart.symbol,
+    name: chart.name || chart.symbol,
+    price: chart.current_price,
+  } : null, [chart]);
+  const chartStocks = useMemo(() => chartStock ? [chartStock] : [], [chartStock]);
+  const alerts = useAlerts(alertStocks, Boolean(alertStocks.length));
+  const alertSymbols = useMemo(
+    () => [...new Set([chartSymbol, ...alerts.rules.map((rule) => rule.symbol)].filter(Boolean))],
+    [chartSymbol, alerts.rules],
+  );
+  const hasCompanyName = Boolean(chartStock?.name && chartStock.name.toLowerCase() !== chartSymbol.toLowerCase());
+  const displayName = hasCompanyName ? chartStock.name : chartSymbol.toUpperCase();
   const zoneEntries = Object.entries(chart?.zones_by_timeframe || {}).flatMap(([zoneTimeframe, zones]) =>
     (zones || []).map((zone) => ({ timeframe: zoneTimeframe, zone })),
   );
@@ -56,7 +74,11 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
     setError("");
     setChart(null);
     getStockChart(chartSymbol, timeframe, controller.signal)
-      .then(setChart)
+      .then((payload) => {
+        lastChartFetch.current = Date.now();
+        if (isNsePostMarketUpdateWindow()) postMarketFetchDate.current = nseClock().date;
+        setChart(payload);
+      })
       .catch((requestError) => {
         if (!axios.isCancel(requestError)) setError(requestError.message || "Unable to load this chart.");
       })
@@ -65,6 +87,88 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
       });
     return () => controller.abort();
   }, [chartSymbol, timeframe]);
+
+  useEffect(() => {
+    if (!chartSymbol) return undefined;
+    const controller = new AbortController();
+    let refreshing = false;
+
+    const refreshChart = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const payload = await getStockChart(chartSymbol, timeframe, controller.signal);
+        if (controller.signal.aborted) return;
+        lastChartFetch.current = Date.now();
+        if (isNsePostMarketUpdateWindow()) postMarketFetchDate.current = nseClock().date;
+        setChart(payload);
+      } catch (requestError) {
+        if (!controller.signal.aborted) console.warn("Unable to refresh chart candles.", requestError);
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const checkForRefresh = () => {
+      const now = Date.now();
+      const { date } = nseClock(now);
+      if (isNseMarketActive(now)) {
+        if (now - lastChartFetch.current >= 15 * 60_000) refreshChart();
+      } else if (
+        isNsePostMarketUpdateWindow(now)
+        && postMarketFetchDate.current !== date
+      ) {
+        refreshChart();
+      }
+    };
+
+    const interval = window.setInterval(checkForRefresh, 5 * 60_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
+  }, [chartSymbol, timeframe]);
+
+  useEffect(() => {
+    if (!alertSymbols.length) {
+      setAlertStocks([]);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const refreshQuotes = async () => {
+      if (!isNseMarketActive()) return;
+      const currentNseDate = nseClock().date;
+      if (quoteStatus.current.marketStatus === "closed" && quoteStatus.current.date === currentNseDate) return;
+      try {
+        const payload = await getStockQuotes(alertSymbols, controller.signal);
+        if (controller.signal.aborted) return;
+        setAlertStocks(payload.stocks || []);
+        quoteStatus.current = {
+          marketStatus: payload.market_status,
+          date: nseClock().date,
+        };
+      } catch (requestError) {
+        if (!controller.signal.aborted) console.warn("Unable to refresh chart alert quotes.", requestError);
+      }
+    };
+
+    refreshQuotes();
+    const interval = window.setInterval(refreshQuotes, 5 * 60_000);
+    return () => {
+      window.clearInterval(interval);
+      controller.abort();
+    };
+  }, [alertSymbols]);
+
+  useEffect(() => {
+    const quote = alertStocks.find((item) => item.symbol.toLowerCase() === chartSymbol.toLowerCase());
+    if (quote && chart && quote.price !== chart.current_price) {
+      setChart((current) => current && current.current_price !== quote.price
+        ? { ...current, current_price: quote.price }
+        : current);
+    }
+  }, [alertStocks, chart, chartSymbol]);
 
   useEffect(() => {
     setNoteText(savedNote?.text || "");
@@ -90,7 +194,14 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   }
 
   return (
-    <WorkspaceLayout view="chart" navigate={navigate} watchlistCount={watchlist.symbols.length} alertCount={alerts.rules.length} stocks={market.stocks}>
+    <WorkspaceLayout
+      view="chart"
+      navigate={navigate}
+      watchlistCount={watchlist.symbols.length}
+      alertCount={alerts.rules.length}
+      stocks={chartStocks}
+      remoteStockSearch
+    >
       <div className="chart-page">
       <header className="topbar">
         <Breadcrumb navigate={navigate} current="Chart" />
@@ -103,7 +214,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
       <section className="page-heading chart-page-heading">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />MULTI-TIMEFRAME · NSE</div>
-          <h1>{displayName}{stock && <span> {chartSymbol.toUpperCase()}</span>}</h1>
+          <h1>{displayName}{hasCompanyName && <span> {chartSymbol.toUpperCase()}</span>}</h1>
           <p className="page-subtitle">Interactive price charts with technical indicators, drawing tools, and multi-timeframe zones.</p>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate(`/stocks/${encodeURIComponent(chartSymbol)}`)}>Stock details ↗</button>
@@ -115,7 +226,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
         ))}
       </div>
 
-      {loading && <div className="chart-loading">Loading {timeframe} chart…</div>}
+      {loading && <div className="chart-loading"><LoadingIndicator label={`Loading ${timeframe} chart…`} /></div>}
       {error && <div className="error-banner" role="alert">{error}<button className="text-button" onClick={() => navigate("/scanner")}>Back to scanner</button></div>}
 
       {chart && !loading && <>
@@ -135,6 +246,7 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
           symbol={chartSymbol}
           fullScreen={chartFullscreen}
           onToggleFullScreen={() => setChartFullscreen((expanded) => !expanded)}
+          onTimeframeChange={(nextTimeframe) => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${nextTimeframe}`)}
         />
 
         <section className="chart-trends" aria-label="Trend by timeframe">
