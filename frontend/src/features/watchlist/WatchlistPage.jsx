@@ -17,8 +17,8 @@ export default function WatchlistPage({ navigate }) {
   const [filter, setFilter] = useState("all");
   const [timeframe, setTimeframe] = useState("monthly");
   const [minScore, setMinScore] = useState(5);
-  const [maxDistancePct, setMaxDistancePct] = useState(3);
-  const [minRiskReward, setMinRiskReward] = useState(2);
+  const [maxDistancePct, setMaxDistancePct] = useState("Any");
+  const [minRiskReward, setMinRiskReward] = useState(1);
   const [search, setSearch] = useState("");
   const stocks = market.stocks;
 
@@ -62,12 +62,6 @@ export default function WatchlistPage({ navigate }) {
           <p className="page-subtitle">A focused view of the stocks you chose to follow.</p>
         </div>
         <button className="primary-button" onClick={() => navigate("/scanner")}>Explore the scanner</button>
-      </section>
-
-      <section className="watchlist-overview grid grid-cols-2 gap-2 min-[561px]:grid-cols-3 min-[561px]:gap-3" aria-label="Watchlist summary">
-        <article className="watchlist-stat"><span>SAVED STOCKS</span><strong>{watchlist.symbols.length}</strong><small>Kept on this device</small></article>
-        <article className="watchlist-stat"><span>IN MARKET DATA</span><strong>{market.loading ? <LoadingIndicator compact label="Loading…" /> : trackedStocks.length}</strong><small>Current Nifty 100 coverage</small></article>
-        <article className="watchlist-stat"><span>FRESH QUOTES</span><strong>{market.loading ? <LoadingIndicator compact label="Loading…" /> : `${freshCount}/${trackedStocks.length}`}</strong><small>Latest status from the feed</small></article>
       </section>
 
       {market.error && <div className="error-banner" role="alert">{market.error} <button className="text-button" onClick={market.refresh}>Retry</button></div>}

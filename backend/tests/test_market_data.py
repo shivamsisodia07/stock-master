@@ -5,7 +5,6 @@ from unittest.mock import patch
 import pandas as pd
 
 import backend.services.market_data as market_data
-from backend.services.csv_import import parse_ohlc_csv
 from backend.services.market_data import (
     _aggregate_candles,
     _calendar_events,
@@ -15,21 +14,11 @@ from backend.services.market_data import (
     get_chart_data,
     get_market_data,
     get_stock_quotes,
-    import_csv_market_data,
     search_stock_universe,
 )
 
 
-def csv_for_days(count: int = 30) -> str:
-    rows = ["Date,Symbol,Open,High,Low,Close,Volume"]
-    start = date(2024, 1, 1)
-    for offset in range(count):
-        candle_date = start + timedelta(days=offset)
-        rows.append(f"{candle_date},TEST.NS,100,102,99,101,1000")
-    return "\n".join(rows)
-
-
-class CsvImportTests(unittest.TestCase):
+class MarketDataTests(unittest.TestCase):
     def test_market_data_response_cache_expires_after_five_minutes(self):
         with (
             patch("backend.services.market_data._cache", None),
@@ -83,40 +72,6 @@ class CsvImportTests(unittest.TestCase):
         })
 
         self.assertEqual(events, [{"title": "Earnings Date", "date": "2025-01-03"}])
-
-    def test_parses_quoted_headers_and_sorts_candles(self):
-        source = csv_for_days()
-        lines = source.splitlines()
-        content = "\n".join([lines[0].replace("Date", '"Date"'), *reversed(lines[1:])])
-
-        imported = parse_ohlc_csv(content)
-
-        self.assertEqual(imported[0][0], "TEST")
-        self.assertEqual(imported[0][2][0]["date"], "2024-01-01")
-        self.assertEqual(imported[0][2][-1]["date"], "2024-01-30")
-
-    def test_rejects_invalid_ohlc(self):
-        lines = csv_for_days().splitlines()
-        lines[1] = "2024-01-01,TEST,100,98,99,101,1000"
-
-        with self.assertRaisesRegex(ValueError, "Invalid OHLC range on row 2"):
-            parse_ohlc_csv("\n".join(lines))
-
-    def test_import_generates_chartable_timeframes(self):
-        with patch("backend.services.market_data.detect_zones", return_value=[]):
-            payload = import_csv_market_data(csv_for_days())
-
-        self.assertEqual(payload["source"], "Imported CSV")
-        self.assertEqual(payload["stocks"][0]["price"], 101)
-        self.assertEqual(payload["stocks"][0]["freshness"]["quote_source"], "csv_import")
-        weekly = get_chart_data("TEST", "weekly")
-        monthly = get_chart_data("TEST", "monthly")
-        quarterly = get_chart_data("TEST", "quarterly")
-        self.assertEqual(weekly["current_price"], 101)
-        self.assertGreater(len(weekly["candles"]), 1)
-        self.assertEqual(len(monthly["candles"]), 1)
-        self.assertEqual(len(quarterly["candles"]), 1)
-        self.assertIn("quarterly", quarterly["zones_by_timeframe"])
 
     def test_aggregated_monthly_candle_uses_first_trading_session_date(self):
         daily = [
@@ -422,7 +377,6 @@ class CsvImportTests(unittest.TestCase):
                     "score": 6,
                 }
                 with (
-                    patch.object(market_data, "_imported_history", {}),
                     patch.object(market_data, "_history_by_symbol", {"TEST": {"daily": [{"close": 104}]}}),
                     patch.object(market_data, "_intraday_chart_cache", {
                         ("TEST", timeframe): (now - timedelta(minutes=1), candles),
@@ -459,7 +413,6 @@ class CsvImportTests(unittest.TestCase):
             "volume": 200,
         }
         with (
-            patch.object(market_data, "_imported_history", {}),
             patch.object(market_data, "_history_by_symbol", {"TEST": {"daily": [history_candle]}}),
             patch.object(market_data, "_history_updated_at_by_symbol", {"TEST": now}),
             patch.object(market_data, "_quotes_by_symbol", {

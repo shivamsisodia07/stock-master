@@ -22,7 +22,6 @@ from backend.services.market_data import (
     get_sector_chart_data,
     get_stock_quotes,
     get_stock_news_and_events,
-    import_csv_market_data,
     search_stock_universe,
 )
 from backend.services.trade_journal import create_trade, delete_trade, list_trades, update_trade
@@ -77,10 +76,6 @@ async def stock_quotes(symbols: list[str] = Query(min_length=1)) -> dict:
         return await asyncio.to_thread(get_stock_quotes, symbols)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-
-
-class CsvImportRequest(BaseModel):
-    content: str
 
 
 class AlertDeliveryRequest(BaseModel):
@@ -146,12 +141,6 @@ async def save_user_workspace_data(
         raise HTTPException(status_code=503, detail="MongoDB is unavailable.") from error
 
 
-@app.post("/api/import-csv")
-async def import_csv(request: CsvImportRequest) -> dict:
-    try:
-        return await asyncio.to_thread(import_csv_market_data, request.content)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.post("/api/alerts/deliver")

@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import LoadingIndicator from "../../components/LoadingIndicator.jsx";
 import useAlerts from "../alerts/useAlerts.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
-import { importCsv } from "../../lib/api.js";
 import { relativeTime } from "../../lib/format.js";
 import WorkspaceLayout, {
   Breadcrumb,
@@ -29,219 +28,12 @@ const SORT_OPTIONS = [
   ["distance-reward", "Nearest entry → highest reward/risk"],
   ["symbol", "Symbol A–Z"],
 ];
-
-function Methodology({ onClose }) {
-  return (
-    <div
-      className="chart-modal-backdrop methodology-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        className="detail-dialog methodology-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="methodology-title"
-      >
-        <button className="dialog-close" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
-        <div className="eyebrow">
-          <span className="eyebrow-line" />
-          ZONE SCANNER
-        </div>
-        <section class="scan-guide" aria-labelledby="scan-guide-title">
-          <h2 id="scan-guide-title">How the scan works</h2>
-          <p>
-            The scanner identifies high-probability supply and demand zones by
-            classifying candles, validating zone structure, scoring each setup
-            out of 7, and filtering for actionable trade parameters.
-          </p>
-
-          <h3>1. Zone detection &amp; boundaries</h3>
-          <p>
-            Every closed candle is classified by its body-to-range ratio (the
-            still-forming latest candle is always ignored):
-          </p>
-          <ul>
-            <li>
-              <strong>Exciting candle:</strong> Body is more than 50% of the
-              total candle range.
-            </li>
-            <li>
-              <strong>Base candle:</strong> Body is 50% or less of the total
-              candle range.
-            </li>
-          </ul>
-          <p>
-            Using these, the detector marks <strong>DBR, RBR, RBD, DBD</strong>,
-            and <strong>direct no-base reversals</strong>
-            (current detection requires both the leg-in and leg-out to be
-            exciting candles).
-          </p>
-          <ul>
-            <li>
-              <strong>Proximal line:</strong> Set at the base candle bodies.
-            </li>
-            <li>
-              <strong>Distal line:</strong> Set at the furthest base candle
-              wick.
-            </li>
-          </ul>
-
-          <h3>2. Validation &amp; retest rules</h3>
-          <p>
-            A zone is automatically discarded if it fails any of the following
-            checks:
-          </p>
-          <ul>
-            <li>
-              <strong>Broken zone:</strong> Any subsequent candle closes beyond
-              the distal line.
-            </li>
-            <li>
-              <strong>Weak departure:</strong> Price fails to close beyond the
-              leg-in extreme within the first 3 leg-out candles.
-            </li>
-            <li>
-              <strong>Over-tested:</strong> The zone has been retested 2 or more
-              times.
-            </li>
-            <li>
-              <strong>Low score:</strong> Total score is below 5 out of 7.
-            </li>
-          </ul>
-          <p>
-            <strong>What counts as a retest:</strong> Any later candle whose
-            wick crosses the proximal line triggers a retest immediately—even
-            without a body entry or follow-through. Consecutive candles
-            overlapping the zone count as a single visit; price must fully leave
-            the zone before a new touch counts as a second test. The initial
-            leg-out never counts as a test.
-          </p>
-
-          <h3>3. Zone scoring (7-point scale)</h3>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Factor</th>
-                <th scope="col">Max</th>
-                <th scope="col">Scoring criteria</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <strong>Freshness</strong>
-                </td>
-                <td>3</td>
-                <td>
-                  <strong>3</strong> = Untested (fresh) &middot;{" "}
-                  <strong>1.5</strong> = Tested once
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <strong>Strength</strong>
-                </td>
-                <td>2</td>
-                <td>
-                  <strong>2</strong> = Two exciting legs, or one exciting leg +
-                  directional gap &middot; <strong>1</strong> = One exciting leg
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <strong>Base length</strong>
-                </td>
-                <td>2</td>
-                <td>
-                  <strong>2</strong> = 1&ndash;3 candles &middot;{" "}
-                  <strong>1</strong> = 4&ndash;5 candles &middot;{" "}
-                  <strong>0</strong> = 6 or more candles
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <p>
-            <strong>Directional gaps:</strong> A <strong>demand gap</strong>{" "}
-            occurs when the leg-out low is strictly above the prior candle's
-            high; a <strong>supply gap</strong> occurs when the leg-out high is
-            strictly below the prior candle's low.{" "}
-            <em>
-              (Note: Current pattern rules still require both incoming and
-              outgoing legs to be exciting.)
-            </em>
-          </p>
-
-          <h3>4. Scanner filters &amp; trade levels</h3>
-          <p>
-            A stock appears in results when a valid zone on your selected
-            timeframe passes your active
-            <strong>entry-distance</strong>, <strong>reward/risk</strong>,{" "}
-            <strong>score</strong>, and
-            <strong>freshness</strong> filters.
-          </p>
-          <ul>
-            <li>
-              <strong>Entry &amp; Stop:</strong> Entry distance is measured from
-              the <strong>proximal line</strong>; the stop sits at the{" "}
-              <strong>distal line</strong>.
-            </li>
-            <li>
-              <strong>Target:</strong> Set to the proximal edge of the nearest
-              opposing zone, or a mechanical <strong>2R</strong> target if no
-              opposing zone exists.
-            </li>
-            <li>
-              <strong>Freshness display:</strong> The freshness filter toggles
-              between untested zones and once-tested zones; quote freshness
-              remains visible in tile view.
-            </li>
-          </ul>
-
-          <h3>5. Market data &amp; timeframes</h3>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Source</th>
-                <th scope="col">Timeframes &amp; history</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <strong>Yahoo Finance</strong>
-                </td>
-                <td>
-                  Daily (2 years) &middot; Weekly (10 years) &middot; Monthly
-                  (max available) &middot; Quarterly (aggregated from monthly)
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <strong>CSV Import</strong>
-                </td>
-                <td>
-                  Weekly, monthly, and quarterly candles are aggregated directly
-                  from the supplied daily data
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      </section>
-    </div>
-  );
-}
+const ZONE_DISTANCE_FILTERS = [5, 10, 15, "any"];
+const RISK_REWARD_FILTERS = [0, 1, 1.5, 2, 3, "any"];
+const ZONE_SCORE_FILTERS = [5, 6, 7];
 
 export default function ScannerPage({ navigate }) {
   const market = useMarketData();
-  const [importedData, setImportedData] = useState(null);
-  const [csvError, setCsvError] = useState("");
-  const [csvLoading, setCsvLoading] = useState(false);
   const watchlist = useWatchlist();
   const [filter, setFilter] = useState("all");
   const [timeframe, setTimeframe] = useState("monthly");
@@ -252,14 +44,13 @@ export default function ScannerPage({ navigate }) {
   const [zoneFreshness, setZoneFreshness] = useState("fresh");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("score-distance");
-  const [showMethodology, setShowMethodology] = useState(false);
-  const stocks = importedData?.stocks ?? market.stocks;
-  const updatedAt = importedData?.updated_at ?? market.updatedAt;
-  const universe = importedData?.universe ?? market.universe;
-  const failedBatches = importedData ? [] : market.failedBatches;
-  const loading = !importedData && market.loading;
-  const error = Boolean(csvError || (!importedData && market.error));
-  const alerts = useAlerts(stocks, !importedData);
+  const stocks = market.stocks;
+  const updatedAt = market.updatedAt;
+  const universe = market.universe;
+  const failedBatches = market.failedBatches;
+  const loading = market.loading;
+  const error = Boolean(market.error);
+  const alerts = useAlerts(stocks, true);
 
   const stocksWithTimeframeZones = stocks.filter((stock) => {
     const zones = zonesMeetingFilters(stock, timeframe, {
@@ -270,23 +61,6 @@ export default function ScannerPage({ navigate }) {
     });
     return zones.demand || zones.supply;
   });
-
-  async function handleCsv(event) {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) return;
-    setCsvLoading(true);
-    setCsvError("");
-    try {
-      setImportedData(await importCsv(await file.text()));
-      navigate("/scanner");
-    } catch (requestError) {
-      setCsvError(requestError.message || "Unable to import this OHLC CSV.");
-    } finally {
-      setCsvLoading(false);
-      input.value = "";
-    }
-  }
 
   const visibleStocks = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -374,9 +148,6 @@ export default function ScannerPage({ navigate }) {
         freshness: zoneFreshness,
       }).supply,
   ).length;
-  const freshnessSummary = stocks.length
-    ? `${stocks.filter((stock) => ["fresh", "session close"].includes(stock.freshness.status)).length}/${stocks.length} fresh`
-    : "Waiting for feed";
 
   return (
     <WorkspaceLayout
@@ -389,33 +160,6 @@ export default function ScannerPage({ navigate }) {
     >
       <header className="topbar">
         <Breadcrumb navigate={navigate} current="Zone scanner" />
-        {/* <div className="top-actions">
-          <div className="market-status">
-            <i style={{ background: error ? "var(--red)" : "var(--green)" }} />
-            <span>
-              {error
-                ? "DATA UNAVAILABLE"
-                : importedData
-                  ? "CSV · STATIC"
-                  : "INTRADAY · YAHOO"}
-            </span>
-          </div>
-          <button
-            className="icon-button"
-            aria-label="How the scan works"
-            onClick={() => setShowMethodology(true)}
-          >
-            ?
-          </button>
-          <div className="date-label">
-            {updatedAt
-              ? new Date(updatedAt).toLocaleTimeString("en-IN", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </div>
-        </div> */}
       </header>
       <section className="page-heading flex flex-col items-start gap-3 min-[561px]:flex-row min-[561px]:items-end min-[561px]:justify-between">
         <div>
@@ -430,98 +174,13 @@ export default function ScannerPage({ navigate }) {
             A consistent demand and supply scan across the Nifty 100 universe.
           </p>
         </div>
-        {/* <div className="heading-actions">
-          <button
-            className="text-button"
-            onClick={() => setShowMethodology(true)}
-          >
-            How is this scan built?
-          </button>
-          <input
-            id="csv-import"
-            type="file"
-            accept=".csv,text/csv"
-            hidden
-            onChange={handleCsv}
-          />
-          <button
-            className="text-button"
-            disabled={csvLoading}
-            onClick={() => document.getElementById("csv-import").click()}
-          >
-            {csvLoading ? <LoadingIndicator compact label="Importing…" /> : "↑ Import OHLC CSV"}
-          </button>
-          <button
-            className="primary-button"
-            onClick={() => {
-              if (importedData) {
-                setImportedData(null);
-                market.refresh();
-              } else market.refresh();
-            }}
-          >
-            {importedData ? "↻ Return to live data" : "↻ Refresh data"}
-          </button>
-        </div> */}
       </section>
 
-      {/* <section
-        className="market-strip flex items-center max-[820px]:flex-wrap"
-        aria-label="Market summary"
-      >
-        <div className="market-main">
-          <div className="market-icon">N</div>
-          <div>
-            <div className="market-name">
-              {importedData ? "CSV DATA" : "NIFTY 100"}{" "}
-              <span className="live-pill">
-                <i />
-                {stocks.length
-                  ? importedData
-                    ? "IMPORTED"
-                    : "SCANNED"
-                  : <LoadingIndicator compact label="CONNECTING" />}
-              </span>
-            </div>
-            <div className="market-desc">
-              {importedData
-                ? "Daily OHLC imported · Weekly/monthly aggregated"
-                : `Intraday quote may be delayed · Universe: ${universe?.source || "NSE Indices"}`}
-            </div>
-          </div>
-        </div>
-        <div className="strip-divider" />
-        <div className="metric">
-          <span className="metric-label">STOCKS LOADED</span>
-          <strong>{stocks.length || (loading ? <LoadingIndicator compact label="Loading…" /> : "0")}</strong>
-        </div>
-        <div className="metric">
-          <span className="metric-label">DEMAND ZONES</span>
-          <strong>{nearbyDemand}</strong>
-        </div>
-        <div className="metric">
-          <span className="metric-label">SUPPLY ZONES</span>
-          <strong>{nearbySupply}</strong>
-        </div>
-        <div className="strip-note">
-          <span className="pulse" />
-          {freshnessSummary} <b>{updatedAt ? relativeTime(updatedAt) : ""}</b>
-        </div>
-      </section> */}
-
-      {market.error && !importedData && !csvError && (
+      {market.error && (
         <div className="error-banner" role="alert">
           {market.error}{" "}
           <button className="text-button" onClick={market.refresh}>
             Retry
-          </button>
-        </div>
-      )}
-      {csvError && (
-        <div className="error-banner" role="alert">
-          {csvError}{" "}
-          <button className="text-button" onClick={() => setCsvError("")}>
-            Dismiss
           </button>
         </div>
       )}
@@ -606,11 +265,11 @@ export default function ScannerPage({ navigate }) {
                   )
                 }
               >
-                <option value={1}>1%</option>
-                <option value={2}>2%</option>
-                <option value={3}>3%</option>
-                <option value={5}>5%</option>
-                <option value="any">Any</option>
+                {ZONE_DISTANCE_FILTERS.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "any" ? "Any" : `${value}%`}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="filter-control">
@@ -622,11 +281,11 @@ export default function ScannerPage({ navigate }) {
                   setMinRiskReward(Number(event.target.value))
                 }
               >
-                <option value={0}>Any</option>
-                <option value={1}>1R+</option>
-                <option value={1.5}>1.5R+</option>
-                <option value={2}>2R+</option>
-                <option value={3}>3R+</option>
+                {RISK_REWARD_FILTERS.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "any" ? "Any" : `${value}R+`}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="filter-control">
@@ -636,11 +295,12 @@ export default function ScannerPage({ navigate }) {
                 value={minScore}
                 onChange={(event) => setMinScore(Number(event.target.value))}
               >
-                <option value={5}>5 / 7+</option>
-                <option value={5.5}>5.5 / 7+</option>
-                <option value={6}>6 / 7+</option>
-                <option value={6.5}>6.5 / 7+</option>
-                <option value={7}>7 / 7 only</option>
+                {ZONE_SCORE_FILTERS.map((value) => (
+                    <option key={value} value={value}>
+                      {value === 7 ? "7 / 7 only" : `${value}/7 +`}
+                    </option>
+                  ))
+                }
               </select>
             </label>
             <label className="filter-control">
@@ -698,8 +358,7 @@ export default function ScannerPage({ navigate }) {
         </div>
         <div className="results-heading-actions">
           <span className="results-count">
-            {importedData ? "CSV imported" : "Quote refresh"} ·{" "}
-            {relativeTime(updatedAt)}
+            Quote refresh · {relativeTime(updatedAt)}
           </span>
           <div
             className="view-toggle"
@@ -782,9 +441,6 @@ export default function ScannerPage({ navigate }) {
               : "Try relaxing the distance, reward/risk, or freshness filters. Zones are not replaced with demo data."}
           </p>
         </section>
-      )}
-      {showMethodology && (
-        <Methodology onClose={() => setShowMethodology(false)} />
       )}
     </WorkspaceLayout>
   );

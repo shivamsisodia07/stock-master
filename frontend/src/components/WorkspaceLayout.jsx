@@ -289,14 +289,6 @@ export default function WorkspaceLayout({
                     <small>{user?.email || "Sign in to sync across devices"}</small>
                   </div>
                 </div>
-                <div className={`header-profile-sync ${syncError ? "has-error" : ""}`} role="status">
-                  <i className={user && !syncError ? "connected" : ""} />
-                  <span>Google: {syncError || (user ? syncStatus : "Not signed in")}</span>
-                </div>
-                {user && <div className={`header-profile-sync ${mongoSyncError ? "has-error" : ""}`} role="status">
-                  <i className={!mongoSyncError && mongoSyncStatus === "Synced to MongoDB" ? "connected" : ""} />
-                  <span>MongoDB: {mongoSyncError || mongoSyncStatus}</span>
-                </div>}
                 <button className="header-profile-menu-action" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
                   <span>Appearance</span><strong>{theme === "dark" ? "Dark" : "Light"} theme</strong>
                 </button>
@@ -306,20 +298,9 @@ export default function WorkspaceLayout({
               </div>
             )}
           </div>
-          {/* <button
-            className="theme-toggle"
-            type="button"
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            title={`Current theme: ${theme}`}
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >{theme === "light" ? "☀" : "◐"}</button> */}
         </div>
       </header>
       <aside className="sidebar">
-        {/* <a className="brand" href="/swingtrader" onClick={(event) => followRoute(event, navigate, "/")} aria-label="swingTrader home">
-          <BrandMark />
-          <span>swingTrader<small className="brand-sub">PRICE STRUCTURE RESEARCH</small></span>
-        </a> */}
         <a href={appRoutePath("/")} title="Home" className={`nav-item ${view === "home" ? "active" : ""}`} aria-current={view === "home" ? "page" : undefined} onClick={(event) => followRoute(event, navigate, "/")}>
           <span className="nav-icon">⌂</span> Home
         </a>

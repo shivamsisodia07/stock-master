@@ -12,7 +12,6 @@ from fastapi import HTTPException
 
 from backend.data.universe import STOCKS, get_universe
 from backend.data.sector_indices import STOCK_SECTOR_INDEX
-from backend.services.csv_import import parse_ohlc_csv
 from backend.services.zone_scanner import (
     CHART_TIMEFRAMES,
     MIN_ZONE_SCORE,
@@ -46,8 +45,6 @@ _quote_failures: list[str] = []
 _intraday_chart_cache: dict[tuple[str, str], tuple[datetime, list[dict]]] = {}
 _sector_chart_cache: dict[tuple[str, str], tuple[datetime, dict]] = {}
 _sector_history_cache: dict[str, tuple[datetime, dict[str, list[dict]]]] = {}
-_imported_history: dict[str, dict[str, list[dict]]] = {}
-_imported_zones: dict[str, dict[str, list[dict]]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -653,55 +650,6 @@ def _aggregate_intraday_candles(candles: list[dict], bars_per_candle: int = 5) -
     return aggregated
 
 
-def import_csv_market_data(content: str) -> dict:
-    global _imported_history, _imported_zones
-    imported = parse_ohlc_csv(content)
-    now = datetime.now(timezone.utc)
-    universe = [(symbol, name) for symbol, name, _ in imported]
-    history = {}
-    zones_by_symbol = {}
-    quotes = {}
-
-    for symbol, _, daily in imported:
-        history[symbol] = {"daily": daily}
-        history[symbol]["weekly"] = _aggregate_candles(daily, "weekly")
-        history[symbol]["monthly"] = _aggregate_candles(daily, "monthly")
-        history[symbol]["quarterly"] = _aggregate_candles(history[symbol]["monthly"], "quarterly")
-        zones_by_symbol[symbol] = {}
-        for timeframe in TIMEFRAMES:
-            found = detect_zones(history[symbol][timeframe], timeframe, now=now)
-            zones_by_symbol[symbol][timeframe] = {
-                "demand": [zone for zone in found if zone["type"] == "demand"],
-                "supply": [zone for zone in found if zone["type"] == "supply"],
-            }
-        quote_date = datetime.fromisoformat(daily[-1]["date"])
-        quote_date = quote_date.replace(tzinfo=NSE_TIMEZONE, hour=15, minute=30)
-        quotes[symbol] = {
-            "price": daily[-1]["close"],
-            "as_of": quote_date.astimezone(timezone.utc).isoformat(),
-            "source": "csv_import",
-        }
-
-    _imported_history = history
-    _imported_zones = zones_by_symbol
-    result = _build_market_data(
-        universe,
-        {"source": "Imported CSV", "count": len(universe)},
-        now,
-        history_source=history,
-        zones_source=zones_by_symbol,
-        quotes_source=quotes,
-    )
-    result.update({
-        "source": "Imported CSV",
-        "data_delay_note": "CSV-imported prices are static; freshness is based on the latest imported candle date.",
-        "market_status": "imported",
-        "poll_interval_seconds": None,
-        "failed_batches": [],
-    })
-    return result
-
-
 def get_market_data() -> dict:
     global _cache, _cache_updated_at
     with _cache_lock:
@@ -728,8 +676,6 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         raise HTTPException(status_code=400, detail="Timeframe must be daily, weekly, monthly, quarterly, 60m, or 75m.")
     normalized_symbol = symbol.upper().removesuffix(".NS")
     if timeframe in ("60m", "75m"):
-        if normalized_symbol in _imported_history:
-            raise HTTPException(status_code=503, detail="Intraday charts are unavailable for imported CSV data.")
         now = datetime.now(timezone.utc)
         if normalized_symbol not in _history_by_symbol or not _history_by_symbol[normalized_symbol].get("daily"):
             _refresh_symbol_history(normalized_symbol, now)
@@ -776,30 +722,6 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
             "zones_by_timeframe": zones_by_timeframe,
             "trends": trends,
             "updated_at": updated_at.isoformat() if updated_at else None,
-        }
-
-    if normalized_symbol in _imported_history:
-        history = _imported_history[normalized_symbol]
-        current_price = history.get("daily", [{}])[-1].get("close", 0)
-        zones_by_timeframe = _qualifying_chart_zones(
-            _imported_zones.get(normalized_symbol, {}),
-            current_price,
-        )
-        selected_zones = zones_by_timeframe.get(timeframe, [])
-        trends = {
-            zone_timeframe: calculate_sma7_trend(history.get(zone_timeframe, []))
-            for zone_timeframe in TIMEFRAMES
-        }
-        return {
-            "symbol": normalized_symbol,
-            "name": STOCK_NAMES.get(normalized_symbol, normalized_symbol),
-            "timeframe": timeframe,
-            "current_price": current_price,
-            "candles": history.get(timeframe, []),
-            "zones": _zones_by_type(selected_zones),
-            "zones_by_timeframe": zones_by_timeframe,
-            "trends": trends,
-            "updated_at": None,
         }
 
     now = datetime.now(timezone.utc)

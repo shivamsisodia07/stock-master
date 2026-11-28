@@ -45,13 +45,6 @@ export function getStockNews(symbol, signal) {
   return request(API_ROUTES.STOCK_NEWS(symbol), signal);
 }
 
-export function importCsv(content) {
-  return request(API_ROUTES.IMPORT_CSV, undefined, {
-    method: "POST",
-    data: { content },
-  });
-}
-
 export function getIncomeTradeModes(signal) {
   return request(API_ROUTES.INCOME_TRADE_MODES, signal);
 }
