@@ -11,14 +11,21 @@ import yfinance as yf
 from fastapi import HTTPException
 
 from backend.data.universe import STOCKS, get_universe
+from backend.data.sector_indices import STOCK_SECTOR_INDEX
 from backend.services.csv_import import parse_ohlc_csv
-from backend.services.zone_scanner import MIN_ZONE_SCORE, TIMEFRAMES, detect_zones, nearest_zone
+from backend.services.zone_scanner import (
+    CHART_TIMEFRAMES,
+    MIN_ZONE_SCORE,
+    TIMEFRAMES,
+    detect_zones,
+    nearest_zone,
+)
 
 logger = logging.getLogger(__name__)
 NSE_TIMEZONE = ZoneInfo("Asia/Kolkata")
 CACHE_SECONDS = 5 * 60
 HISTORY_CACHE_SECONDS = 15 * 60
-MIN_CHART_ZONE_SCORE = 6
+INTRADAY_CHART_CACHE_SECONDS = 5 * 60
 BATCH_SIZE = 20
 STOCK_NAMES = dict(STOCKS)
 INTERVALS = {
@@ -36,6 +43,9 @@ _quotes_by_symbol: dict[str, dict] = {}
 _quote_updated_at_by_symbol: dict[str, datetime] = {}
 _history_failures: list[str] = []
 _quote_failures: list[str] = []
+_intraday_chart_cache: dict[tuple[str, str], tuple[datetime, list[dict]]] = {}
+_sector_chart_cache: dict[tuple[str, str], tuple[datetime, dict]] = {}
+_sector_history_cache: dict[str, tuple[datetime, dict[str, list[dict]]]] = {}
 _imported_history: dict[str, dict[str, list[dict]]] = {}
 _imported_zones: dict[str, dict[str, list[dict]]] = {}
 _cache_lock = threading.Lock()
@@ -114,7 +124,12 @@ def _date_string(index) -> str:
     return str(index)[:10]
 
 
-def _download_candles(tickers: list[str], period: str, interval: str) -> dict[str, list[dict]]:
+def _download_candles(
+    tickers: list[str],
+    period: str,
+    interval: str,
+    preserve_time: bool = False,
+) -> dict[str, list[dict]]:
     frame = yf.download(
         tickers=tickers,
         period=period,
@@ -143,7 +158,7 @@ def _download_candles(tickers: list[str], period: str, interval: str) -> dict[st
             if any(not math.isfinite(float(value)) for value in values.values()):
                 continue
             candle = {
-                "date": _date_string(index),
+                "date": int(index.timestamp()) if preserve_time else _date_string(index),
                 "open": round(float(values["open"]), 2),
                 "high": round(float(values["high"]), 2),
                 "low": round(float(values["low"]), 2),
@@ -186,6 +201,7 @@ def _download_quotes(tickers: list[str]) -> dict[str, dict]:
         if not valid:
             continue
         quote_time, price = valid[-1]
+        quote_index = quote_time
         quote_date = _date_string(quote_time)
         if hasattr(quote_time, "to_pydatetime"):
             quote_time = quote_time.to_pydatetime()
@@ -201,6 +217,11 @@ def _download_quotes(tickers: list[str]) -> dict[str, dict]:
         low_series = _column_for_ticker(frame, ticker, "Low")
         volume_series = _column_for_ticker(frame, ticker, "Volume")
         if all(series is not None for series in (open_series, high_series, low_series, volume_series)):
+            last_high = float(high_series.loc[quote_index])
+            last_low = float(low_series.loc[quote_index])
+            if math.isfinite(last_high) and math.isfinite(last_low):
+                quote["last_high"] = round(last_high, 2)
+                quote["last_low"] = round(last_low, 2)
             session_rows = []
             for index in frame.index:
                 if _date_string(index) != quote_date:
@@ -288,13 +309,13 @@ def _nearest_by_timeframe(zones: dict[str, list[dict]], price: float, zone_type:
 
 def _qualifying_chart_zones(zones_by_timeframe: dict, price: float) -> dict:
     qualifying = {}
-    for timeframe in TIMEFRAMES:
+    for timeframe in CHART_TIMEFRAMES:
         timeframe_zones = zones_by_timeframe.get(timeframe, {})
         candidates = [
             zone
             for zone_type in ("demand", "supply")
             for zone in timeframe_zones.get(zone_type, [])
-            if zone.get("score", 0) >= MIN_CHART_ZONE_SCORE
+            if zone.get("score", 0) >= MIN_ZONE_SCORE
         ]
 
         def distance_to_zone(zone: dict) -> float:
@@ -500,8 +521,8 @@ def _build_market_data(
             for timeframe in TIMEFRAMES
         }
         daily_zones = timeframe_zones.get("daily", {"demand": [], "supply": []})
-        demand = _nearest_by_timeframe(daily_zones, last_close, "demand", max_distance=3)
-        supply = _nearest_by_timeframe(daily_zones, last_close, "supply", max_distance=3)
+        demand = _nearest_by_timeframe(daily_zones, current_price, "demand", max_distance=3)
+        supply = _nearest_by_timeframe(daily_zones, current_price, "supply", max_distance=3)
         weekly = timeframe_zones.get("weekly", {"demand": [], "supply": []})
         monthly = timeframe_zones.get("monthly", {"demand": [], "supply": []})
         quarterly = timeframe_zones.get("quarterly", {"demand": [], "supply": []})
@@ -518,12 +539,12 @@ def _build_market_data(
             "latest_candle_date": daily[-1]["date"],
             "demand": demand,
             "supply": supply,
-            "weekly_demand": _nearest_by_timeframe(weekly, last_close, "demand"),
-            "weekly_supply": _nearest_by_timeframe(weekly, last_close, "supply"),
-            "monthly_demand": _nearest_by_timeframe(monthly, last_close, "demand"),
-            "monthly_supply": _nearest_by_timeframe(monthly, last_close, "supply"),
-            "quarterly_demand": _nearest_by_timeframe(quarterly, last_close, "demand"),
-            "quarterly_supply": _nearest_by_timeframe(quarterly, last_close, "supply"),
+            "weekly_demand": _nearest_by_timeframe(weekly, current_price, "demand"),
+            "weekly_supply": _nearest_by_timeframe(weekly, current_price, "supply"),
+            "monthly_demand": _nearest_by_timeframe(monthly, current_price, "demand"),
+            "monthly_supply": _nearest_by_timeframe(monthly, current_price, "supply"),
+            "quarterly_demand": _nearest_by_timeframe(quarterly, current_price, "demand"),
+            "quarterly_supply": _nearest_by_timeframe(quarterly, current_price, "supply"),
             "trends": trends,
             "has_nearby_zone": demand is not None or supply is not None,
         })
@@ -608,6 +629,30 @@ def _aggregate_candles(candles: list[dict], timeframe: str) -> list[dict]:
     return result
 
 
+def _aggregate_intraday_candles(candles: list[dict], bars_per_candle: int = 5) -> list[dict]:
+    by_session: dict[date, list[dict]] = {}
+    for candle in sorted(candles, key=lambda item: item["date"]):
+        session_date = datetime.fromtimestamp(
+            candle["date"],
+            timezone.utc,
+        ).astimezone(NSE_TIMEZONE).date()
+        by_session.setdefault(session_date, []).append(candle)
+
+    aggregated = []
+    for session_candles in by_session.values():
+        for start in range(0, len(session_candles), bars_per_candle):
+            group = session_candles[start:start + bars_per_candle]
+            aggregated.append({
+                "date": group[0]["date"],
+                "open": group[0]["open"],
+                "high": max(candle["high"] for candle in group),
+                "low": min(candle["low"] for candle in group),
+                "close": group[-1]["close"],
+                "volume": sum(candle["volume"] for candle in group),
+            })
+    return aggregated
+
+
 def import_csv_market_data(content: str) -> dict:
     global _imported_history, _imported_zones
     imported = parse_ohlc_csv(content)
@@ -679,9 +724,60 @@ def get_market_data() -> dict:
 
 
 def get_chart_data(symbol: str, timeframe: str) -> dict:
-    if timeframe not in TIMEFRAMES:
-        raise HTTPException(status_code=400, detail="Timeframe must be daily, weekly, monthly, or quarterly.")
+    if timeframe not in (*TIMEFRAMES, "60m", "75m"):
+        raise HTTPException(status_code=400, detail="Timeframe must be daily, weekly, monthly, quarterly, 60m, or 75m.")
     normalized_symbol = symbol.upper().removesuffix(".NS")
+    if timeframe in ("60m", "75m"):
+        if normalized_symbol in _imported_history:
+            raise HTTPException(status_code=503, detail="Intraday charts are unavailable for imported CSV data.")
+        now = datetime.now(timezone.utc)
+        if normalized_symbol not in _history_by_symbol or not _history_by_symbol[normalized_symbol].get("daily"):
+            _refresh_symbol_history(normalized_symbol, now)
+
+        cache_key = (normalized_symbol, timeframe)
+        cached = _intraday_chart_cache.get(cache_key)
+        if cached is None or now - cached[0] >= timedelta(seconds=INTRADAY_CHART_CACHE_SECONDS):
+            period, interval = ("730d", "60m") if timeframe == "60m" else ("60d", "15m")
+            downloaded = _download_candles(
+                [f"{normalized_symbol}.NS"],
+                period,
+                interval,
+                preserve_time=True,
+            ).get(normalized_symbol, [])
+            candles = downloaded if timeframe == "60m" else _aggregate_intraday_candles(downloaded)
+            if not candles:
+                raise HTTPException(status_code=503, detail=f"No {timeframe} chart history is currently available for {normalized_symbol}.")
+            _intraday_chart_cache[cache_key] = (now, candles)
+        candles = _intraday_chart_cache[cache_key][1]
+        price = _quotes_by_symbol.get(normalized_symbol, {}).get("price", candles[-1]["close"])
+        intraday_zones = detect_zones(candles, timeframe, now=now)
+        symbol_zones = dict(_zones_by_symbol.get(normalized_symbol, {}))
+        symbol_zones[timeframe] = {
+            "demand": [zone for zone in intraday_zones if zone["type"] == "demand"],
+            "supply": [zone for zone in intraday_zones if zone["type"] == "supply"],
+        }
+        zones_by_timeframe = _qualifying_chart_zones(
+            symbol_zones,
+            price,
+        )
+        history = _history_by_symbol.get(normalized_symbol, {})
+        trends = {
+            zone_timeframe: calculate_sma7_trend(history.get(zone_timeframe, []))
+            for zone_timeframe in TIMEFRAMES
+        }
+        updated_at = _history_updated_at_by_symbol.get(normalized_symbol)
+        return {
+            "symbol": normalized_symbol,
+            "name": STOCK_NAMES.get(normalized_symbol, normalized_symbol),
+            "timeframe": timeframe,
+            "current_price": price,
+            "candles": candles,
+            "zones": _zones_by_type(zones_by_timeframe.get(timeframe, [])),
+            "zones_by_timeframe": zones_by_timeframe,
+            "trends": trends,
+            "updated_at": updated_at.isoformat() if updated_at else None,
+        }
+
     if normalized_symbol in _imported_history:
         history = _imported_history[normalized_symbol]
         current_price = history.get("daily", [{}])[-1].get("close", 0)
@@ -728,6 +824,12 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         _history_updated_at_by_symbol.get(normalized_symbol)
         or _history_cache_updated_at
     )
+    chart_candles = candles_by_timeframe.get(timeframe, [])
+    if timeframe == "daily":
+        chart_candles = _merge_intraday_candle(
+            chart_candles,
+            _quotes_by_symbol.get(normalized_symbol, {}),
+        )
     zones_by_timeframe = _qualifying_chart_zones(
         _zones_by_symbol.get(normalized_symbol, {}),
         price,
@@ -742,12 +844,120 @@ def get_chart_data(symbol: str, timeframe: str) -> dict:
         "name": STOCK_NAMES.get(normalized_symbol, normalized_symbol),
         "timeframe": timeframe,
         "current_price": price,
-        "candles": candles_by_timeframe.get(timeframe, []),
+        "candles": chart_candles,
         "zones": _zones_by_type(selected_zones),
         "zones_by_timeframe": zones_by_timeframe,
         "trends": trends,
         "updated_at": updated_at.isoformat() if updated_at else None,
     }
+
+
+def _refresh_sector_history(index_ticker: str, now: datetime) -> dict[str, list[dict]]:
+    index_symbol = index_ticker.removesuffix(".NS")
+    history = dict(_sector_history_cache.get(index_ticker, (now, {}))[1])
+    for timeframe, (period, interval) in INTERVALS.items():
+        try:
+            downloaded = _download_candles([index_ticker], period, interval)
+        except Exception:
+            logger.exception("Failed downloading %s sector candles for %s", timeframe, index_ticker)
+            continue
+        candles = downloaded.get(index_symbol)
+        if candles:
+            history[timeframe] = candles
+
+    daily = history.get("daily", [])
+    for timeframe in ("weekly", "monthly"):
+        candles = history.get(timeframe, [])
+        if candles and daily:
+            history[timeframe] = _align_candles_to_first_session(candles, daily, timeframe)
+    if history.get("monthly"):
+        history["quarterly"] = _aggregate_candles(history["monthly"], "quarterly")
+
+    if history:
+        _sector_history_cache[index_ticker] = (now, history)
+    return history
+
+
+def get_sector_chart_data(symbol: str, timeframe: str) -> dict:
+    if timeframe not in (*TIMEFRAMES, "60m", "75m"):
+        raise HTTPException(status_code=400, detail="Unsupported chart timeframe.")
+    normalized_symbol = symbol.upper().removesuffix(".NS")
+    sector_index = STOCK_SECTOR_INDEX.get(normalized_symbol)
+    if sector_index is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No sector index is mapped for {normalized_symbol}.",
+        )
+
+    now = datetime.now(timezone.utc)
+    cache_key = (sector_index["ticker"], timeframe)
+    cached = _sector_chart_cache.get(cache_key)
+    cache_ttl = INTRADAY_CHART_CACHE_SECONDS if timeframe in ("60m", "75m") else HISTORY_CACHE_SECONDS
+    if cached is not None and now - cached[0] < timedelta(seconds=cache_ttl):
+        return cached[1]
+
+    if timeframe in TIMEFRAMES:
+        history_cache = _sector_history_cache.get(sector_index["ticker"])
+        if (
+            history_cache is None
+            or now - history_cache[0] >= timedelta(seconds=HISTORY_CACHE_SECONDS)
+        ):
+            history = _refresh_sector_history(sector_index["ticker"], now)
+        else:
+            history = history_cache[1]
+    else:
+        history = {}
+
+    if timeframe == "60m":
+        period, interval = "730d", "60m"
+        preserve_time = True
+    elif timeframe == "75m":
+        period, interval = "60d", "15m"
+        preserve_time = True
+    else:
+        preserve_time = False
+
+    if timeframe in ("60m", "75m"):
+        downloaded = _download_candles(
+            [sector_index["ticker"]],
+            period,
+            interval,
+            preserve_time=preserve_time,
+        )
+        index_symbol = sector_index["ticker"].removesuffix(".NS")
+        candles = downloaded.get(index_symbol, [])
+    else:
+        candles = history.get(timeframe, [])
+    if timeframe == "75m":
+        candles = _aggregate_intraday_candles(candles)
+    if not candles:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No {sector_index['name']} chart history is currently available.",
+        )
+
+    sector_zones = {
+        zone_timeframe: _zones_by_type(
+            detect_zones(history.get(zone_timeframe, []), zone_timeframe, now=now)
+        )
+        for zone_timeframe in TIMEFRAMES
+    }
+    if timeframe in ("60m", "75m"):
+        sector_zones[timeframe] = _zones_by_type(detect_zones(candles, timeframe, now=now))
+    qualifying_zones = _qualifying_chart_zones(sector_zones, candles[-1]["close"])
+    chart = {
+        "symbol": sector_index["ticker"],
+        "name": sector_index["name"],
+        "timeframe": timeframe,
+        "current_price": candles[-1]["close"],
+        "candles": candles,
+        "zones": _zones_by_type(qualifying_zones[timeframe]),
+        "zones_by_timeframe": qualifying_zones,
+        "is_proxy": sector_index["is_proxy"],
+        "updated_at": now.isoformat(),
+    }
+    _sector_chart_cache[cache_key] = (now, chart)
+    return chart
 
 
 def search_stock_universe(query: str, limit: int = 8) -> list[dict]:
@@ -791,12 +1001,16 @@ def get_stock_quotes(symbols: list[str]) -> dict:
         _refresh_symbol_quote(symbol, now)
         quote = _quotes_by_symbol.get(symbol)
         if quote is not None:
-            stocks.append({
+            stock_quote = {
                 "symbol": symbol,
                 "name": STOCK_NAMES.get(symbol, symbol),
                 "price": quote["price"],
                 "as_of": quote["as_of"],
-            })
+            }
+            if quote.get("last_high") is not None and quote.get("last_low") is not None:
+                stock_quote["last_high"] = quote["last_high"]
+                stock_quote["last_low"] = quote["last_low"]
+            stocks.append(stock_quote)
 
     local_now = now.astimezone(NSE_TIMEZONE)
     market_open = local_now.weekday() < 5 and time(9, 15) <= local_now.time().replace(tzinfo=None) <= time(15, 30)

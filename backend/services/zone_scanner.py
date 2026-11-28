@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 NSE_TIMEZONE = ZoneInfo("Asia/Kolkata")
 TIMEFRAMES = ("daily", "weekly", "monthly", "quarterly")
+CHART_TIMEFRAMES = (*TIMEFRAMES, "60m", "75m")
 MIN_ZONE_SCORE = 5
 
 
@@ -51,6 +52,22 @@ def _strength_score(candles: list[dict], leg_in_index: int, leg_out_index: int, 
 
 
 def _is_forming_candle(candle: dict, timeframe: str, now: datetime) -> bool:
+    if timeframe in ("60m", "75m"):
+        candle_start = datetime.fromtimestamp(
+            candle["date"],
+            timezone.utc,
+        ).astimezone(NSE_TIMEZONE)
+        local_now = now.astimezone(NSE_TIMEZONE)
+        if candle_start.date() != local_now.date() or candle_start.weekday() > 4:
+            return False
+
+        session_close = candle_start.replace(hour=15, minute=30, second=0, microsecond=0)
+        candle_end = min(
+            candle_start + timedelta(minutes=int(timeframe[:-1])),
+            session_close,
+        )
+        return local_now < candle_end
+
     candle_date = datetime.fromisoformat(candle["date"]).date()
     today = now.astimezone(NSE_TIMEZONE).date()
     if timeframe == "daily":
@@ -83,13 +100,17 @@ def _is_forming_candle(candle: dict, timeframe: str, now: datetime) -> bool:
     raise ValueError(f"Unsupported timeframe: {timeframe}")
 
 
-def _completed_candles(candles: list[dict], timeframe: str, now: datetime) -> list[dict]:
-    if candles and _is_forming_candle(candles[-1], timeframe, now):
-        return candles[:-1]
-    return candles
-
-
-def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_index: int, timeframe: str, pattern: str, zone_type: str, base_indices: list[int]) -> dict:
+def _candidate(
+    candles: list[dict],
+    base_start: int,
+    leg_in_index: int,
+    leg_out_index: int,
+    timeframe: str,
+    pattern: str,
+    zone_type: str,
+    base_indices: list[int],
+    test_candles: list[dict] | None = None,
+) -> dict:
     leg_in = candles[leg_in_index]
     leg_out = candles[leg_out_index]
     if pattern == "DBR" and leg_out["close"] <= leg_in["high"]:
@@ -128,7 +149,8 @@ def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_
     was_wick_touching = False
     last_test = None
     broken = False
-    for candle in candles[leg_out_index + 1:]:
+    candles_for_tests = candles if test_candles is None else test_candles
+    for candle in candles_for_tests[leg_out_index + 1:]:
         if zone_type == "demand":
             if candle["close"] < distal:
                 broken = True
@@ -178,10 +200,12 @@ def _candidate(candles: list[dict], base_start: int, leg_in_index: int, leg_out_
 
 
 def detect_zones(candles: list[dict], timeframe: str, now: datetime | None = None) -> list[dict]:
-    if timeframe not in TIMEFRAMES:
+    if timeframe not in CHART_TIMEFRAMES:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
     as_of = now or datetime.now(NSE_TIMEZONE)
-    completed = _completed_candles(candles, timeframe, as_of)
+    forming_candle = bool(candles and _is_forming_candle(candles[-1], timeframe, as_of))
+    completed = candles[:-1] if forming_candle else candles
+    test_candles = candles if forming_candle else completed
     zones = []
     seen = set()
 
@@ -225,6 +249,7 @@ def detect_zones(candles: list[dict], timeframe: str, now: datetime | None = Non
         zone = _candidate(
             completed, base_start, leg_in_index, leg_out_index,
             timeframe, pattern, zone_type, base_indices,
+            test_candles=test_candles,
         )
         if zone:
             zones.append(zone)

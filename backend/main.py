@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import urllib.parse
 import urllib.request
@@ -6,17 +7,19 @@ from urllib.error import HTTPError
 import json
 from pathlib import Path
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
+from pymongo.errors import PyMongoError
 from dotenv import load_dotenv
 
 from backend.services.market_data import (
     get_chart_data,
     get_market_data,
+    get_sector_chart_data,
     get_stock_quotes,
     get_stock_news_and_events,
     import_csv_market_data,
@@ -25,9 +28,16 @@ from backend.services.market_data import (
 from backend.services.trade_journal import create_trade, delete_trade, list_trades, update_trade
 from backend.services.tradesetup import SETUPS, analyze_symbol, scan_nifty100
 from backend.services.trade_scan_store import get_latest_trade_scan
+from backend.services.firebase_auth import require_firebase_user
+from backend.services.mongo_user_data import (
+    MongoDBNotConfigured,
+    get_user_workspace,
+    save_user_workspace,
+)
 
 app = FastAPI(title="swingTrader Market Data API", version="2.0.0")
 load_dotenv(Path(__file__).resolve().parent / ".env")
+logger = logging.getLogger(__name__)
 FRONTEND_DIRECTORY = Path(__file__).resolve().parent / "static"
 TRADE_SETUP_DOCUMENT = Path(__file__).resolve().parent / "docs" / "trade_setup.md"
 app.add_middleware(
@@ -80,6 +90,14 @@ class AlertDeliveryRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class UserWorkspaceRequest(BaseModel):
+    watchlist: list[str] = Field(default_factory=list, max_length=500)
+    alert_rules: list[dict[str, Any]] = Field(default_factory=list, max_length=1000)
+    alert_history: list[dict[str, Any]] = Field(default_factory=list, max_length=1000)
+    alert_delivery: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+    updated_at: int = Field(gt=0)
+
+
 class TradeJournalInput(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     setup: str
@@ -100,6 +118,32 @@ class TradeJournalInput(BaseModel):
     lessons: str = Field(default="", max_length=2000)
     screenshot_url: str = Field(default="", max_length=1000)
     notes: str = Field(default="", max_length=4000)
+
+
+@app.get("/api/user-data")
+async def user_workspace(user_id: str = Depends(require_firebase_user)) -> dict:
+    try:
+        return await asyncio.to_thread(get_user_workspace, user_id)
+    except MongoDBNotConfigured as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except PyMongoError as error:
+        logger.exception("Unable to read the user's MongoDB workspace.")
+        raise HTTPException(status_code=503, detail="MongoDB is unavailable.") from error
+
+
+@app.put("/api/user-data")
+async def save_user_workspace_data(
+    request: UserWorkspaceRequest,
+    user_id: str = Depends(require_firebase_user),
+) -> dict:
+    data = request.model_dump(exclude={"updated_at"})
+    try:
+        return await asyncio.to_thread(save_user_workspace, user_id, data, request.updated_at)
+    except MongoDBNotConfigured as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except PyMongoError as error:
+        logger.exception("Unable to save the user's MongoDB workspace.")
+        raise HTTPException(status_code=503, detail="MongoDB is unavailable.") from error
 
 
 @app.post("/api/import-csv")
@@ -182,6 +226,11 @@ async def remove_journal_trade(trade_id: str) -> dict:
 @app.get("/api/stocks/{symbol}/chart")
 async def stock_chart(symbol: str, timeframe: str = Query(default="daily")) -> dict:
     return await asyncio.to_thread(get_chart_data, symbol, timeframe)
+
+
+@app.get("/api/stocks/{symbol}/sector-chart")
+async def stock_sector_chart(symbol: str, timeframe: str = Query(default="daily")) -> dict:
+    return await asyncio.to_thread(get_sector_chart_data, symbol, timeframe)
 
 
 @app.get("/api/stocks/{symbol}/news")

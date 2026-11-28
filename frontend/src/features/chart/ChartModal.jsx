@@ -10,6 +10,8 @@ const TIMEFRAMES = [
   ["weekly", "Weekly"],
   ["monthly", "Monthly"],
   ["quarterly", "Quarterly"],
+  ["60m", "60 mins"],
+  ["75m", "75 mins"],
 ];
 
 export default function ChartModal({ stock, initialTimeframe = "monthly", onClose }) {
@@ -82,7 +84,7 @@ export default function ChartModal({ stock, initialTimeframe = "monthly", onClos
             <button className="dialog-close" aria-label="Close chart" onClick={onClose}>×</button>
           </div>
         </header>
-        <div className="chart-legend"><span><i className="demand-swatch" /> Demand zone</span><span><i className="supply-swatch" /> Supply zone</span><span><i className="current-swatch" /> Current price</span><span>All zones scoring 6/7+ · {chart?.candles?.length || 0} candles · {timeframe}</span></div>
+        <div className="chart-legend"><span><i className="demand-swatch" /> Demand zone</span><span><i className="supply-swatch" /> Supply zone</span><span><i className="current-swatch" /> Current price</span><span>All zones scoring 5/7+ · {chart?.candles?.length || 0} candles · {timeframe}</span></div>
         {loading && <div className="chart-loading"><LoadingIndicator label={`Loading ${timeframe} chart…`} /></div>}
         {error && <div className="error-banner" role="alert">{error}</div>}
         {chart && !loading && (

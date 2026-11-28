@@ -89,6 +89,7 @@ export default function StockPage({ navigate, symbol }) {
             <div className="stock-heading-title-row">
               <h1>{stock.name} <span>{stock.symbol}</span></h1>
               <div className="stock-heading-price">
+                <span className="current-price-label">Current price</span>
                 <strong>{money(stock.price)}</strong>
                 <small className={stock.change_pct < 0 ? "negative" : ""}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}% today</small>
               </div>

@@ -338,9 +338,9 @@ class CsvImportTests(unittest.TestCase):
         self.assertEqual([zone["id"] for zone in overlays["weekly"]], ["demand-far"])
         self.assertEqual(overlays["monthly"], [])
 
-    def test_chart_overlay_ignores_zones_scoring_below_six(self):
-        low_score_near = {"id": "low-score", "type": "demand", "proximal": 100, "distal": 96, "score": 5.5}
-        qualifying_zone = {"id": "qualifying", "type": "demand", "proximal": 90, "distal": 86, "score": 6}
+    def test_chart_overlay_ignores_zones_scoring_below_five(self):
+        low_score_near = {"id": "low-score", "type": "demand", "proximal": 100, "distal": 96, "score": 4.5}
+        qualifying_zone = {"id": "qualifying", "type": "demand", "proximal": 90, "distal": 86, "score": 5}
 
         overlays = _qualifying_chart_zones(
             {"daily": {"demand": [low_score_near, qualifying_zone], "supply": []}},
@@ -348,6 +348,130 @@ class CsvImportTests(unittest.TestCase):
         )
 
         self.assertEqual(overlays["daily"], [qualifying_zone])
+
+    def test_market_data_selects_zones_relative_to_the_live_price(self):
+        fetched_at = datetime(2026, 11, 27, 10, 0, tzinfo=timezone.utc)
+        daily = [
+            {
+                "date": (date(2026, 10, 1) + timedelta(days=index)).isoformat(),
+                "open": 2060,
+                "high": 2070,
+                "low": 2050,
+                "close": 2067,
+                "volume": 100,
+            }
+            for index in range(25)
+        ]
+        live_zone = {
+            "id": "near-live-price",
+            "type": "demand",
+            "proximal": 2110,
+            "distal": 2090,
+            "score": 6,
+        }
+        last_close_zone = {
+            "id": "near-last-close",
+            "type": "demand",
+            "proximal": 2070,
+            "distal": 2050,
+            "score": 6,
+        }
+        data = market_data._build_market_data(
+            [("TEST", "Test")],
+            {},
+            fetched_at,
+            history_source={"TEST": {"daily": daily}},
+            zones_source={
+                "TEST": {
+                    "weekly": {
+                        "demand": [live_zone, last_close_zone],
+                        "supply": [],
+                    },
+                },
+            },
+            quotes_source={
+                "TEST": {
+                    "price": 2102.5,
+                    "as_of": fetched_at.isoformat(),
+                    "source": "intraday",
+                },
+            },
+        )
+
+        self.assertEqual(data["stocks"][0]["last_close"], 2067)
+        self.assertEqual(data["stocks"][0]["weekly_demand"], live_zone)
+
+    def test_intraday_chart_includes_zones_detected_for_its_selected_timeframe(self):
+        now = datetime.now(timezone.utc)
+        candles = [{
+            "date": int((now - timedelta(hours=2)).timestamp()),
+            "open": 101,
+            "high": 105,
+            "low": 99,
+            "close": 104,
+            "volume": 10,
+        }]
+        for timeframe in ("60m", "75m"):
+            with self.subTest(timeframe=timeframe):
+                zone = {
+                    "id": f"intraday-demand-{timeframe}",
+                    "type": "demand",
+                    "timeframe": timeframe,
+                    "proximal": 100,
+                    "distal": 96,
+                    "score": 6,
+                }
+                with (
+                    patch.object(market_data, "_imported_history", {}),
+                    patch.object(market_data, "_history_by_symbol", {"TEST": {"daily": [{"close": 104}]}}),
+                    patch.object(market_data, "_intraday_chart_cache", {
+                        ("TEST", timeframe): (now - timedelta(minutes=1), candles),
+                    }),
+                    patch.object(market_data, "_quotes_by_symbol", {}),
+                    patch.object(market_data, "_zones_by_symbol", {}),
+                    patch("backend.services.market_data.detect_zones", return_value=[zone]) as detect,
+                ):
+                    chart = get_chart_data("TEST", timeframe)
+
+                self.assertEqual(chart["zones_by_timeframe"][timeframe], [zone])
+                self.assertEqual(chart["zones"]["demand"], [zone])
+                detect.assert_called_once()
+                self.assertEqual(detect.call_args.args, (candles, timeframe))
+                self.assertEqual(detect.call_args.kwargs.keys(), {"now"})
+
+    def test_daily_chart_merges_the_current_session_quote_candle(self):
+        now = datetime.now(timezone.utc)
+        session_date = now.astimezone(market_data.NSE_TIMEZONE).date().isoformat()
+        history_candle = {
+            "date": session_date,
+            "open": 2060,
+            "high": 2070,
+            "low": 2050,
+            "close": 2067,
+            "volume": 100,
+        }
+        quote_candle = {
+            "date": session_date,
+            "open": 2060,
+            "high": 2102.5,
+            "low": 2050,
+            "close": 2102.5,
+            "volume": 200,
+        }
+        with (
+            patch.object(market_data, "_imported_history", {}),
+            patch.object(market_data, "_history_by_symbol", {"TEST": {"daily": [history_candle]}}),
+            patch.object(market_data, "_history_updated_at_by_symbol", {"TEST": now}),
+            patch.object(market_data, "_quotes_by_symbol", {
+                "TEST": {"price": 2102.5, "candle": quote_candle},
+            }),
+            patch.object(market_data, "_zones_by_symbol", {}),
+            patch("backend.services.market_data._refresh_symbol_quote"),
+        ):
+            chart = get_chart_data("TEST", "daily")
+
+        self.assertEqual(chart["current_price"], 2102.5)
+        self.assertEqual(chart["candles"][-1], quote_candle)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,10 @@ import { useSyncExternalStore } from "react";
 import { getMarketData } from "../../lib/api.js";
 import { isNseMarketActive, millisecondsUntilNextNseOpen, nseClock } from "../../lib/marketHours.js";
 
-const CACHE_KEY = "swingTrader-market-data-v1";
+const CACHE_KEY = "swingTrader-market-data-v2";
 const MARKET_OPEN_POLL_INTERVAL = 5 * 60_000;
 const MARKET_OPEN_MINUTE = 9 * 60 + 15;
+const MAX_CACHED_MARKET_DATA_AGE = 24 * 60 * 60_000;
 
 function readCache() {
   if (typeof window === "undefined") return null;
@@ -62,6 +63,7 @@ function publish(snapshot) {
 
 function shouldRefreshOnSubscribe() {
   if (!lastFetchedAt || !marketSnapshot.updatedAt) return true;
+  if (Date.now() - lastFetchedAt >= MAX_CACHED_MARKET_DATA_AGE) return true;
   if (!isNseMarketActive()) return false;
 
   if (marketSnapshot.marketStatus === "closed") {

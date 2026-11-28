@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from backend.services.zone_scanner import _strength_score, detect_zones, nearest_zone
@@ -164,6 +164,22 @@ class ZoneScannerTests(unittest.TestCase):
         market_open = datetime(2024, 1, 3, 6, 30, tzinfo=timezone.utc)
         zones = detect_zones(candles, "daily", market_open)
         self.assertFalse(zones)
+
+    def test_detects_60m_and_75m_zones_only_after_the_candle_closes(self):
+        start = datetime(2026, 1, 5, 3, 45, tzinfo=timezone.utc)
+        for timeframe, minutes in (("60m", 60), ("75m", 75)):
+            with self.subTest(timeframe=timeframe):
+                candles = dbr_candles()[:3]
+                for index, item in enumerate(candles):
+                    item["date"] = int((start + timedelta(minutes=index * minutes)).timestamp())
+
+                candle_end = start + timedelta(minutes=3 * minutes)
+                self.assertFalse(
+                    detect_zones(candles, timeframe, candle_end - timedelta(seconds=1))
+                )
+                zones = detect_zones(candles, timeframe, candle_end)
+                demand = next(zone for zone in zones if zone["type"] == "demand")
+                self.assertEqual(demand["timeframe"], timeframe)
 
     def test_detects_rbd_supply_zone(self):
         supply = [
@@ -335,6 +351,23 @@ class ZoneScannerTests(unittest.TestCase):
         month_end_after_close = datetime(2024, 1, 31, 10, 30, tzinfo=timezone.utc)
         self.assertFalse(detect_zones(candles, "monthly", during_month))
         self.assertTrue(detect_zones(candles, "monthly", month_end_after_close))
+
+    def test_forming_monthly_candle_marks_existing_zone_tested(self):
+        candles = dbr_candles()
+        forming_retest = candle(1, 100, 103, 98, 102)
+        forming_retest["date"] = "2024-02-01"
+        candles.append(forming_retest)
+
+        zones = detect_zones(
+            candles,
+            "monthly",
+            datetime(2024, 2, 15, 6, 0, tzinfo=timezone.utc),
+        )
+
+        demand = next(zone for zone in zones if zone["type"] == "demand")
+        self.assertEqual(demand["tests"], 1)
+        self.assertEqual(demand["freshness"], "tested once")
+        self.assertEqual(demand["last_test"], "2024-02-01")
 
     def test_ignores_forming_but_uses_completed_quarterly_candle(self):
         candles = dbr_candles()[:3]

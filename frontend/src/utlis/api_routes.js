@@ -3,6 +3,7 @@ export const API_ROUTES = {
   STOCK_SEARCH: (query) => `/api/stocks/search?q=${encodeURIComponent(query)}`,
   STOCK_QUOTES: (symbols) => `/api/stocks/quotes?${symbols.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join("&")}`,
   STOCK_CHART: (symbol, timeframe) => `/api/stocks/${encodeURIComponent(symbol)}/chart?timeframe=${timeframe}`,
+  STOCK_SECTOR_CHART: (symbol, timeframe) => `/api/stocks/${encodeURIComponent(symbol)}/sector-chart?timeframe=${timeframe}`,
   STOCK_NEWS: (symbol) => `/api/stocks/${encodeURIComponent(symbol)}/news`,
   IMPORT_CSV: "/api/import-csv",
   INCOME_TRADE_MODES: "/api/income-trades/modes",
@@ -12,4 +13,5 @@ export const API_ROUTES = {
   TRADE: (id) => `/api/trades/${encodeURIComponent(id)}`,
   TRADE_SETUP_GUIDE: "/api/docs/trade-setup",
   ALERT_DELIVERY: "/api/alerts/deliver",
+  USER_DATA: "/api/user-data",
 };

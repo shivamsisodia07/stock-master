@@ -29,6 +29,10 @@ export function getStockChart(symbol, timeframe, signal) {
   return request(API_ROUTES.STOCK_CHART(symbol, timeframe), signal);
 }
 
+export function getStockSectorChart(symbol, timeframe, signal) {
+  return request(API_ROUTES.STOCK_SECTOR_CHART(symbol, timeframe), signal);
+}
+
 export function searchStocks(query, signal) {
   return request(API_ROUTES.STOCK_SEARCH(query), signal);
 }

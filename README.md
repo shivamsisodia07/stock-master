@@ -45,6 +45,33 @@ npm run dev
 
 The frontend uses Tailwind CSS utilities for responsive layouts and Axios for API requests. The existing stylesheet retains specialized chart and component visuals.
 
+### Google sign-in and cross-device sync
+
+Cross-device sync uses Firebase Authentication (Google provider) and Cloud Firestore. Create a Firebase project, enable **Google** under Authentication → Sign-in method, create a Firestore database, and add the Vite config values below to the existing `frontend/.env.development` (or matching environment file used for your build). `frontend/.env.example` lists the required variable names.
+
+```text
+VITE_FIREBASE_API_KEY=your-firebase-web-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_APP_ID=your-firebase-app-id
+```
+
+In Firebase Authentication, add the app's local and deployed domains to the authorized domains list. Configure Firestore rules so a signed-in user can read and write only their own sync documents:
+
+```text
+match /users/{userId}/syncData/{dataId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+```
+
+MongoDB stores a per-user copy of the watchlist, alert rules, alert history, and alert delivery settings. Copy the values from `backend/.env.example` into `backend/.env` (do not overwrite existing settings), then set:
+
+- `MONGODB_URI` to your MongoDB Atlas or self-hosted connection string. For Atlas, create a database user and allow the backend host in Network Access. URL-encode special characters in the username or password.
+- `MONGODB_DATABASE` to the database name you want to use.
+- `FIREBASE_PROJECT_ID` to the same project ID used by `VITE_FIREBASE_PROJECT_ID`. The backend verifies Firebase ID tokens before reading or writing user data.
+
+Keep `backend/.env` private; it is ignored by Git. Restart the backend after setting these values. Once signed in, Firebase syncs the browser workspace across devices, while MongoDB keeps a backend copy of watchlists and alert data. This does not include market-data cache or the server-backed trade journal.
+
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The API is available at `http://127.0.0.1:8000`; `/api/health` checks that it is running. API documentation is available at `/docs` and `/api/docs`.
 
 For a backend-only deployment, build the frontend from its folder before starting FastAPI:
@@ -64,7 +91,7 @@ The production build is written to `backend/static`; FastAPI serves the app and 
 - Refreshes intraday quotes every 60 seconds and displays quote age and latest daily candle date.
 - Refreshes the Nifty 100 constituents from the NSE Indices CSV weekly; if unavailable, the UI marks that it is using the bundled fallback list.
 - Downloads about two years of daily candles, ten years of weekly candles, and the maximum monthly history available from Yahoo Finance.
-- Classifies candles by the 50% body/range rule; detects DBR, RBR, RBD, DBD, and direct no-base reversals. Still-forming candles are excluded from zone detection.
+- Classifies candles by the 50% body/range rule; detects DBR, RBR, RBD, DBD, and direct no-base reversals. Still-forming candles cannot create zones, but can update the retest status of existing zones.
 - Discards broken zones, zones with two or more retests, and zones without a closing move beyond the leg-in extreme within the first three leg-out candles. A body crossing the proximal line counts as a retest; a wick-only touch counts only if followed by a later exciting leg-out in the zone's direction. Closes beyond the distal line break the zone.
 - Shows the selected timeframe's nearby demand and supply zones, a weighted zone score out of 7, and the current quote's location between the distal-line stop and target. Monthly is the default timeframe; other timeframe context is shown on each stock's detail page. Zones below 5/7 are excluded throughout the scanner and chart overlays.
 - Filters scanner and watchlist results by timeframe, demand/supply, score (5 to 7 in half-point increments), zone freshness (fresh or tested once), entry distance, and reward-to-risk.
@@ -72,8 +99,12 @@ The production build is written to `backend/static`; FastAPI serves the app and 
 - Provides a home page, learning center, scanner, watchlist, alerts, and per-stock detail pages with browser back/forward navigation. The learning center covers price action, zone identification, scoring, strategy frameworks, trade planning, and risk. Stock detail pages show trade plans for every available timeframe plus recent Yahoo Finance news and company calendar dates.
 - Offers compact table and tile layouts for scanner results.
 - Imports OHLC CSV files with date, symbol, open, high, low, close, and volume columns; imported prices remain static, while weekly and monthly candles are aggregated from the provided daily data.
-- Saves watchlist symbols, alert rules, and recent alert history in browser storage. Optional browser notifications trigger when a refreshed quote enters a saved zone.
+- Saves watchlist symbols, alert rules, and recent alert history in browser storage and mirrors them per signed-in user to MongoDB. Optional browser notifications trigger when a refreshed quote enters a saved zone.
 - Provides full-page interactive candlestick charts with one nearest zone per timeframe. The selected timeframe is shown by default; overlays for other timeframes can be toggled individually or hidden together. Charts also support daily/weekly/monthly/quarterly views, volume, SMA 20/50 and EMA 9/20/50 overlays, crosshair OHLC details, pan/zoom, and per-stock notes.
+- Shows the mapped sector index chart and its demand/supply zones beside or below each stock chart, with linked time-range zoom, an adjustable minimum zone-score filter (6+ by default), and a clearly labeled NIFTY India Digital ETF proxy for telecom/digital stocks.
+- Adds 60-minute and 75-minute chart views with demand and supply zones detected from completed candles. The 75-minute chart aggregates five 15-minute Yahoo Finance bars per session; both intraday views depend on Yahoo Finance history availability.
+- Tracks long and short plans against the latest available quote, automatically records entry activation and target/stop exits, and summarizes expected reward/risk and realized P&L.
+- Supports Google sign-in and per-user Firestore sync for browser-saved workspace data when Firebase is configured.
 - Stores the latest nightly scan for all six income-trade setups in SQLite and displays its matches and scan status on the home dashboard.
 
 ### Zone score

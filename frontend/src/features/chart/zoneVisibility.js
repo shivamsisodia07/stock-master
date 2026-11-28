@@ -1,8 +1,10 @@
 const TIMEFRAME_RANK = {
-  daily: 0,
-  weekly: 1,
-  monthly: 2,
-  quarterly: 3,
+  "60m": 0,
+  "75m": 1,
+  daily: 2,
+  weekly: 3,
+  monthly: 4,
+  quarterly: 5,
 };
 
 export function isHiddenByHigherTimeframeZone(zone, timeframe, zonesByTimeframe, visibleTimeframes) {

@@ -9,6 +9,7 @@ import {
   createChart,
 } from "lightweight-charts";
 import { money } from "../../lib/format.js";
+import { notifySyncableDataChanged } from "../../lib/firebaseSync.jsx";
 import { isHiddenByHigherTimeframeZone } from "./zoneVisibility.js";
 
 const TIMEFRAME_LABELS = {
@@ -16,7 +17,12 @@ const TIMEFRAME_LABELS = {
   weekly: "Weekly",
   monthly: "Monthly",
   quarterly: "Quarterly",
+  "60m": "60 mins",
+  "75m": "75 mins",
 };
+const ZONE_TIMEFRAME_LABELS = Object.fromEntries(
+  Object.entries(TIMEFRAME_LABELS),
+);
 
 const INDICATOR_OPTIONS = [
   ["volume", "Volume"],
@@ -32,8 +38,8 @@ const INDICATOR_OPTIONS = [
 ];
 
 const DEFAULT_INDICATORS = {
-  volume: true,
-  sma7: true,
+  volume: false,
+  sma7: false,
   sma20: false,
   sma50: false,
   ema9: false,
@@ -46,8 +52,20 @@ const DEFAULT_INDICATORS = {
 
 function formatTime(time) {
   if (typeof time === "string") return time;
-  if (typeof time === "number") return new Date(time * 1000).toISOString().slice(0, 10);
+  if (typeof time === "number") return time;
   return `${time.year}-${String(time.month).padStart(2, "0")}-${String(time.day).padStart(2, "0")}`;
+}
+
+function formatTimeLabel(time) {
+  if (typeof time === "number") {
+    return new Date(time * 1000).toLocaleString(undefined, {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  return formatTime(time);
 }
 
 function movingAverageData(candles, period) {
@@ -183,21 +201,24 @@ function isSavedDrawing(drawing) {
   return drawing.type === "trend"
     && Array.isArray(drawing.points)
     && drawing.points.length === 2
-    && drawing.points.every((point) => typeof point.time === "string" && Number.isFinite(point.price));
+    && drawing.points.every((point) => (typeof point.time === "string" || Number.isFinite(point.time)) && Number.isFinite(point.price));
 }
 
 function readSavedLayout(storageKey, selectedTimeframe) {
   try {
     const saved = JSON.parse(window.localStorage.getItem(storageKey) || "null") || {};
+    const defaultVisibleTimeframes = [selectedTimeframe];
     const visibleTimeframes = Array.isArray(saved.visibleTimeframes)
-      ? saved.visibleTimeframes.filter((timeframe) => TIMEFRAME_LABELS[timeframe])
-      : [selectedTimeframe];
+      ? saved.visibleTimeframes.filter((timeframe) => ZONE_TIMEFRAME_LABELS[timeframe])
+      : defaultVisibleTimeframes;
     return {
       chartType: isChartType(saved.chartType) ? saved.chartType : "candles",
       indicators: Object.fromEntries(
         Object.keys(DEFAULT_INDICATORS).map((key) => [
           key,
-          typeof saved.indicators?.[key] === "boolean" ? saved.indicators[key] : DEFAULT_INDICATORS[key],
+          saved.indicatorDefaultsVersion === 1 && typeof saved.indicators?.[key] === "boolean"
+            ? saved.indicators[key]
+            : DEFAULT_INDICATORS[key],
         ]),
       ),
       showZones: typeof saved.showZones === "boolean" ? saved.showZones : true,
@@ -236,6 +257,22 @@ function addPane(chart) {
   return chart.panes().length - 1;
 }
 
+function timeValueKey(time) {
+  if (time && typeof time === "object") {
+    return `${time.year}-${time.month}-${time.day}`;
+  }
+  return String(time);
+}
+
+function sameVisibleTimeRange(first, second) {
+  return Boolean(
+    first
+    && second
+    && timeValueKey(first.from) === timeValueKey(second.from)
+    && timeValueKey(first.to) === timeValueKey(second.to),
+  );
+}
+
 export default function PriceChart({
   candles,
   zonesByTimeframe,
@@ -246,6 +283,8 @@ export default function PriceChart({
   fullscreenInModal = false,
   onToggleFullScreen,
   onTimeframeChange,
+  visibleTimeRange,
+  onVisibleTimeRangeChange,
 }) {
   const chartRootRef = useRef(null);
   const containerRef = useRef(null);
@@ -257,6 +296,7 @@ export default function PriceChart({
   const drawingToolRef = useRef("pan");
   const pendingPointRef = useRef(null);
   const lastVisibleRangeRef = useRef(null);
+  const visibleTimeRangeChangeRef = useRef(onVisibleTimeRangeChange);
   const lastCandleCountRef = useRef(0);
   const lastChartContextRef = useRef(null);
   const [chartRevision, setChartRevision] = useState(0);
@@ -273,6 +313,10 @@ export default function PriceChart({
   const [visibleTimeframes, setVisibleTimeframes] = useState(savedLayout.visibleTimeframes);
   const [drawings, setDrawings] = useState(savedLayout.drawings);
   const [drawingMessage, setDrawingMessage] = useState("");
+
+  useEffect(() => {
+    visibleTimeRangeChangeRef.current = onVisibleTimeRangeChange;
+  }, [onVisibleTimeRangeChange]);
 
   useEffect(() => {
     const closeOtherMenus = (event) => {
@@ -298,16 +342,33 @@ export default function PriceChart({
       window.localStorage.setItem(storageKey, JSON.stringify({
         chartType,
         indicators,
+        indicatorDefaultsVersion: 1,
         showZones,
         visibleTimeframes,
         drawings,
       }));
+      notifySyncableDataChanged(storageKey);
       setLayoutStatus("Layout saved");
     } catch (error) {
       console.warn(`Unable to save chart layout ${storageKey}.`, error);
       setLayoutStatus("Layout could not be saved");
     }
   }, [storageKey, chartType, indicators, showZones, visibleTimeframes, drawings]);
+
+  useEffect(() => {
+    const applySyncedLayout = (event) => {
+      if (event.detail?.key !== storageKey) return;
+      const synced = readSavedLayout(storageKey, selectedTimeframe);
+      setChartType(synced.chartType);
+      setIndicators(synced.indicators);
+      setShowZones(synced.showZones);
+      setVisibleTimeframes(synced.visibleTimeframes);
+      setDrawings(synced.drawings);
+      setLayoutStatus("Layout synced");
+    };
+    window.addEventListener("swingTrader:cloud-data-updated", applySyncedLayout);
+    return () => window.removeEventListener("swingTrader:cloud-data-updated", applySyncedLayout);
+  }, [storageKey, selectedTimeframe]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -327,7 +388,7 @@ export default function PriceChart({
         horzLines: { color: "#243148" },
       },
       rightPriceScale: { borderColor: "#29364d" },
-      timeScale: { borderColor: "#29364d", timeVisible: false },
+      timeScale: { borderColor: "#29364d", timeVisible: selectedTimeframe === "60m" || selectedTimeframe === "75m" },
       crosshair: { mode: CrosshairMode.Normal },
       handleScroll: {
         mouseWheel: true,
@@ -564,6 +625,10 @@ export default function PriceChart({
     chart.subscribeClick(handleChartClick);
 
     chartRef.current = chart;
+    const handleVisibleTimeRangeChange = (range) => {
+      if (range) visibleTimeRangeChangeRef.current?.(range);
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     const previousRange = lastVisibleRangeRef.current;
     const chartContext = `${symbol || "stock"}:${selectedTimeframe}`;
     const addedCandles = candles.length - lastCandleCountRef.current;
@@ -595,6 +660,7 @@ export default function PriceChart({
       resizeObserver.disconnect();
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chart.unsubscribeClick(handleChartClick);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
       lastVisibleRangeRef.current = chart.timeScale().getVisibleLogicalRange();
       renderedDrawingsRef.current = [];
       chart.remove();
@@ -604,6 +670,15 @@ export default function PriceChart({
       zoneLinesRef.current = [];
     };
   }, [candles, zonesByTimeframe, selectedTimeframe, chartType, indicators]);
+
+  useEffect(() => {
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale || !visibleTimeRange) return;
+    const currentRange = timeScale.getVisibleRange();
+    if (!sameVisibleTimeRange(currentRange, visibleTimeRange)) {
+      timeScale.setVisibleRange(visibleTimeRange);
+    }
+  }, [visibleTimeRange, chartRevision]);
 
   useEffect(() => {
     zoneLinesRef.current.forEach(({ timeframe, zone, line }) => {
@@ -688,7 +763,7 @@ export default function PriceChart({
     >
       <div className="chart-interaction-bar">
         <div className="chart-crosshair-data" aria-live="polite">
-          <strong>{displayedCandle.date}</strong>
+          <strong>{formatTimeLabel(displayedCandle.date)}</strong>
           <span>O {money(displayedCandle.open)}</span>
           <span>H {money(displayedCandle.high)}</span>
           <span>L {money(displayedCandle.low)}</span>
@@ -725,7 +800,7 @@ export default function PriceChart({
                 <input type="checkbox" checked={showZones} onChange={(event) => setShowZones(event.target.checked)} />
                 <span>Show zone lines</span>
               </label>
-              {Object.entries(TIMEFRAME_LABELS).map(([timeframe, label]) => (
+              {Object.entries(ZONE_TIMEFRAME_LABELS).map(([timeframe, label]) => (
                 <label key={timeframe}>
                   <input
                     type="checkbox"

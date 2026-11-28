@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import WorkspaceLayout, { Breadcrumb } from "../../components/WorkspaceLayout.jsx";
 import LoadingIndicator from "../../components/LoadingIndicator.jsx";
-import { getStockChart, getStockQuotes } from "../../lib/api.js";
-import { money, relativeTime } from "../../lib/format.js";
+import { getStockChart, getStockQuotes, getStockSectorChart } from "../../lib/api.js";
+import { relativeTime } from "../../lib/format.js";
 import {
   isNseMarketActive,
   isNsePostMarketUpdateWindow,
@@ -14,18 +14,19 @@ import useAlerts from "../alerts/useAlerts.js";
 import useWatchlist from "../watchlist/useWatchlist.js";
 import PriceChart from "./PriceChart.jsx";
 
-const TIMEFRAMES = [
+const TREND_TIMEFRAMES = [
   ["daily", "Daily"],
   ["weekly", "Weekly"],
   ["monthly", "Monthly"],
   ["quarterly", "Quarterly"],
 ];
 
-const TIMEFRAME_LABELS = Object.fromEntries(TIMEFRAMES);
-
-function zoneBounds(zone) {
-  return `${money(Math.min(zone.proximal, zone.distal))}–${money(Math.max(zone.proximal, zone.distal))}`;
-}
+const CHART_TIMEFRAMES = [
+  ...TREND_TIMEFRAMES,
+  ["60m", "60 mins"],
+  ["75m", "75 mins"],
+];
+const TIMEFRAME_LABELS = Object.fromEntries(CHART_TIMEFRAMES);
 
 function decodeSymbol(value) {
   try {
@@ -35,16 +36,48 @@ function decodeSymbol(value) {
   }
 }
 
+function zonesAtMinimumScore(zonesByTimeframe, minimumScore) {
+  return Object.fromEntries(
+    Object.entries(zonesByTimeframe || {}).map(([zoneTimeframe, zones]) => [
+      zoneTimeframe,
+      (zones || []).filter((zone) => Number(zone.score) >= minimumScore),
+    ]),
+  );
+}
+
+function timeValueKey(time) {
+  if (time && typeof time === "object") {
+    return `${time.year}-${time.month}-${time.day}`;
+  }
+  return String(time);
+}
+
+function sameVisibleTimeRange(first, second) {
+  return Boolean(
+    first
+    && second
+    && timeValueKey(first.from) === timeValueKey(second.from)
+    && timeValueKey(first.to) === timeValueKey(second.to),
+  );
+}
+
 export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   const chartSymbol = decodeSymbol(symbol);
   const watchlist = useWatchlist();
   const [chart, setChart] = useState(null);
+  const [sectorChart, setSectorChart] = useState(null);
+  const [sectorLoading, setSectorLoading] = useState(true);
+  const [sectorError, setSectorError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notes, setNotes] = usePersistentArray("pivot-chart-notes");
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [chartFullscreen, setChartFullscreen] = useState(false);
+  const [sectorChartFullscreen, setSectorChartFullscreen] = useState(false);
+  const [minimumZoneScore, setMinimumZoneScore] = useState(6);
+  const [chartLayout, setChartLayout] = useState("stacked");
+  const [visibleTimeRangeState, setVisibleTimeRangeState] = useState({ key: "", range: null });
   const [alertStocks, setAlertStocks] = useState([]);
   const quoteStatus = useRef({ marketStatus: null, date: null });
   const lastChartFetch = useRef(0);
@@ -63,9 +96,25 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
   );
   const hasCompanyName = Boolean(chartStock?.name && chartStock.name.toLowerCase() !== chartSymbol.toLowerCase());
   const displayName = hasCompanyName ? chartStock.name : chartSymbol.toUpperCase();
-  const zoneEntries = Object.entries(chart?.zones_by_timeframe || {}).flatMap(([zoneTimeframe, zones]) =>
-    (zones || []).map((zone) => ({ timeframe: zoneTimeframe, zone })),
+  const chartViewKey = `${chartSymbol}:${timeframe}`;
+  const visibleTimeRange = visibleTimeRangeState.key === chartViewKey
+    ? visibleTimeRangeState.range
+    : null;
+  const stockZones = useMemo(
+    () => zonesAtMinimumScore(chart?.zones_by_timeframe, minimumZoneScore),
+    [chart?.zones_by_timeframe, minimumZoneScore],
   );
+  const sectorZones = useMemo(
+    () => zonesAtMinimumScore(sectorChart?.zones_by_timeframe, minimumZoneScore),
+    [sectorChart?.zones_by_timeframe, minimumZoneScore],
+  );
+  const handleVisibleTimeRangeChange = useCallback((range) => {
+    setVisibleTimeRangeState((current) => (
+      current.key === chartViewKey && sameVisibleTimeRange(current.range, range)
+        ? current
+        : { key: chartViewKey, range }
+    ));
+  }, [chartViewKey]);
 
   useEffect(() => {
     if (!chartSymbol) return undefined;
@@ -84,6 +133,25 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [chartSymbol, timeframe]);
+
+  useEffect(() => {
+    if (!chartSymbol) return undefined;
+    const controller = new AbortController();
+    setSectorLoading(true);
+    setSectorError("");
+    setSectorChart(null);
+    getStockSectorChart(chartSymbol, timeframe, controller.signal)
+      .then(setSectorChart)
+      .catch((requestError) => {
+        if (!axios.isCancel(requestError)) {
+          setSectorError(requestError.message || "Unable to load the sector index chart.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSectorLoading(false);
       });
     return () => controller.abort();
   }, [chartSymbol, timeframe]);
@@ -220,41 +288,113 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
         <button className="secondary-button" type="button" onClick={() => navigate(`/stocks/${encodeURIComponent(chartSymbol)}`)}>Stock details ↗</button>
       </section>
 
-      <div className="chart-page-timeframes" role="tablist" aria-label="Chart timeframe">
-        {TIMEFRAMES.map(([value, label]) => (
-          <button key={value} type="button" role="tab" aria-selected={timeframe === value} className={timeframe === value ? "active" : ""} onClick={() => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${value}`)}>{label}</button>
-        ))}
+      <div className="chart-comparison-controls">
+        <div className="chart-controls-left">
+          <label className="chart-score-filter">
+            <span>Minimum zone score</span>
+            <select
+              className="chart-compact-select"
+              aria-label="Minimum zone score"
+              value={minimumZoneScore}
+              onChange={(event) => setMinimumZoneScore(Number(event.target.value))}
+            >
+              {[5, 5.5, 6, 6.5, 7].map((score) => (
+                <option key={score} value={score}>{score}+</option>
+              ))}
+            </select>
+          </label>
+          <div className="chart-labeled-control">
+            <span id="chart-layout-label">Chart layout</span>
+            <div className="chart-layout-control" role="group" aria-labelledby="chart-layout-label">
+              <button
+                type="button"
+                aria-pressed={chartLayout === "stacked"}
+                className={chartLayout === "stacked" ? "active" : ""}
+                onClick={() => setChartLayout("stacked")}
+              >Stacked</button>
+              <button
+                type="button"
+                aria-pressed={chartLayout === "side-by-side"}
+                className={chartLayout === "side-by-side" ? "active" : ""}
+                onClick={() => setChartLayout("side-by-side")}
+              >Side by side</button>
+            </div>
+          </div>
+        </div>
+        <div className="chart-timeframe-control">
+          <span id="chart-timeframe-label">Timeframe</span>
+          <div className="chart-page-timeframes" role="tablist" aria-labelledby="chart-timeframe-label">
+            {CHART_TIMEFRAMES.map(([value, label]) => (
+              <button key={value} type="button" role="tab" aria-selected={timeframe === value} className={timeframe === value ? "active" : ""} onClick={() => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${value}`)}>{label}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading && <div className="chart-loading"><LoadingIndicator label={`Loading ${timeframe} chart…`} /></div>}
       {error && <div className="error-banner" role="alert">{error}<button className="text-button" onClick={() => navigate("/scanner")}>Back to scanner</button></div>}
 
       {chart && !loading && <>
-        <div className="chart-legend chart-page-legend">
-          <span><i className="demand-swatch" /> Demand</span>
-          <span><i className="supply-swatch" /> Supply</span>
-          <span><i className="current-swatch" /> Current price</span>
-          <span>{chart.candles.length} candles · {TIMEFRAME_LABELS[timeframe]}</span>
-        </div>
+        <div className={`chart-comparison chart-comparison-${chartLayout}`}>
+          <section className="chart-main-section" aria-label="Stock chart">
+            <div className="chart-comparison-heading">
+              <div>
+                <h2>{displayName}</h2>
+                <p>{chart.candles.length} candles · {TIMEFRAME_LABELS[timeframe]}</p>
+              </div>
+            </div>
+            <PriceChart
+              key={`${chartSymbol}-${timeframe}`}
+              candles={chart.candles}
+              zonesByTimeframe={stockZones}
+              currentPrice={chart.current_price}
+              selectedTimeframe={timeframe}
+              symbol={chartSymbol}
+              fullScreen={chartFullscreen}
+              onToggleFullScreen={() => setChartFullscreen((expanded) => !expanded)}
+              onTimeframeChange={(nextTimeframe) => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${nextTimeframe}`)}
+              visibleTimeRange={visibleTimeRange}
+              onVisibleTimeRangeChange={handleVisibleTimeRangeChange}
+            />
+          </section>
 
-        <PriceChart
-          key={`${chartSymbol}-${timeframe}`}
-          candles={chart.candles}
-          zonesByTimeframe={chart.zones_by_timeframe}
-          currentPrice={chart.current_price}
-          selectedTimeframe={timeframe}
-          symbol={chartSymbol}
-          fullScreen={chartFullscreen}
-          onToggleFullScreen={() => setChartFullscreen((expanded) => !expanded)}
-          onTimeframeChange={(nextTimeframe) => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${nextTimeframe}`)}
-        />
+          <section className="chart-sector-section" aria-label="Sector index chart">
+            <div className="chart-comparison-heading">
+              <div>
+                <h2>{sectorChart?.name || "Sector index"}</h2>
+                <p>
+                  {sectorChart
+                    ? `${sectorChart.candles.length} candles · ${TIMEFRAME_LABELS[timeframe]}${sectorChart.is_proxy ? " · ETF proxy" : ""}`
+                    : "Loading sector index…"}
+                </p>
+              </div>
+            </div>
+            {sectorLoading && <div className="chart-loading"><LoadingIndicator label={`Loading ${timeframe} sector chart…`} /></div>}
+            {sectorError && <div className="error-banner" role="alert">{sectorError}</div>}
+            {sectorChart && !sectorLoading && (
+              <PriceChart
+                key={`sector-${sectorChart.symbol}-${timeframe}`}
+                candles={sectorChart.candles}
+                zonesByTimeframe={sectorZones}
+                currentPrice={sectorChart.current_price}
+                selectedTimeframe={timeframe}
+                symbol={`sector-${sectorChart.symbol}`}
+                fullScreen={sectorChartFullscreen}
+                onToggleFullScreen={() => setSectorChartFullscreen((expanded) => !expanded)}
+                onTimeframeChange={(nextTimeframe) => navigate(`/charts/${encodeURIComponent(chartSymbol)}/${nextTimeframe}`)}
+                visibleTimeRange={visibleTimeRange}
+                onVisibleTimeRangeChange={handleVisibleTimeRangeChange}
+              />
+            )}
+          </section>
+        </div>
 
         <section className="chart-trends" aria-label="Trend by timeframe">
           <div className="chart-page-section-heading">
             <div><h2>SMA 7 trend</h2><p>Trend follows the 7-candle SMA angle; CMP position marks the curve location.</p></div>
           </div>
           <div className="chart-trend-grid">
-            {TIMEFRAMES.map(([trendTimeframe, label]) => {
+            {TREND_TIMEFRAMES.map(([trendTimeframe, label]) => {
               const trend = chart.trends?.[trendTimeframe];
               return (
                 <article className="chart-trend-card" key={trendTimeframe}>
@@ -265,23 +405,6 @@ export default function ChartPage({ navigate, symbol, timeframe = "monthly" }) {
               );
             })}
           </div>
-        </section>
-
-        <section className="chart-page-zones" aria-label="Chart zone scores">
-          <div className="chart-page-section-heading">
-            <div><h2>Zones and scores</h2><p>All zones scoring 6/7 or higher, ordered nearest-first. Scores are out of 7.</p></div>
-          </div>
-          {zoneEntries.length ? (
-            <div className="chart-zone-score-grid">
-              {zoneEntries.map(({ timeframe: zoneTimeframe, zone }) => (
-                <article className={`chart-zone-score-card ${zone.type}`} key={`${zoneTimeframe}-${zone.id || zone.type}`}>
-                  <div><strong>{TIMEFRAME_LABELS[zoneTimeframe] || zoneTimeframe}</strong><span>{zone.type} · {zone.freshness || "fresh"}</span></div>
-                  <b>{zone.score}/7</b>
-                  <small>{zoneBounds(zone)}</small>
-                </article>
-              ))}
-            </div>
-          ) : <div className="chart-page-empty">No qualifying zones for this stock.</div>}
         </section>
 
         <section className="chart-notes chart-page-notes" aria-labelledby="chart-notes-title">

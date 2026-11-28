@@ -63,7 +63,7 @@ Principles:
 - Buy at demand, where institutions bought before. Take profit at supply, where they sold before.
 - Location first, trigger second. A good trigger at a bad location is a bad trade.
 - Risk is defined by the zone. The stop goes just beyond the zone, so the idea is wrong if the zone fails.
-- Use only completed higher-timeframe candles. Using a forming candle is lookahead bias and gives false confidence.
+- Use only completed higher-timeframe candles to identify zones and confirm patterns. A forming candle can update the retest status of an existing zone.
 - Fewer high-quality trades beat many average ones.
 - Capital protection comes before profit.
 

@@ -34,7 +34,7 @@ export default function ZoneCard({ stock, timeframe, minScore, maxDistancePct, m
           <span className="score-badge">{primaryZone ? `${primaryZone.score}/7` : "No zone"}</span>
         </div>
       </div>
-      <div className="price-row"><span className="last-price">{money(stock.price)}</span><span className={`price-change ${stock.change_pct < 0 ? "negative" : ""}`}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%</span></div>
+      <div className="price-row"><span className="current-price-label">Current price</span><span className="last-price">{money(stock.price)}</span><span className={`price-change ${stock.change_pct < 0 ? "negative" : ""}`}>{stock.change_pct >= 0 ? "+" : ""}{stock.change_pct.toFixed(2)}%</span></div>
       {primaryZone && <div className="zone-highlights">
         <span className={`zone-type-pill ${isDemand ? "demand-pill" : "supply-pill"}`}>{primaryZone.type} zone</span>
         <span className="zone-pattern-pill">{primaryZone.pattern}</span>
